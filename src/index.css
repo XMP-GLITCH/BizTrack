@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-warm-off-white: #FAF9F7;
+  --color-warm-surface: #FFFFFF;
+  --color-terracotta: #E27D60;
+  --color-sage: #85DCB;
+  --color-citron: #F9DA57;
+  --color-clementine: #FD9950;
+  --color-pomegranate: #DD1265;
+  --color-fuchsia: #B61571;
+  --color-violet: #6E5397;
+  --color-petrol: #0D8390;
+  --color-brown-sabi: #805b4a; /* From Sabi crochet inspiration */
+  
+  --font-serif: "Playfair Display", "DM Serif Display", serif;
+  --font-sans: "Inter", "DM Sans", sans-serif;
+
+  --shadow-soft: 0 4px 20px -2px rgba(100, 90, 80, 0.08);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-warm-off-white);
+    color: #333333;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+  }
+}
+
+/* PWA App adjustments to prevent user selection on UI elements */
+.pwa-no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
