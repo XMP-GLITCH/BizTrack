@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Home, BarChart2, PlusCircle, Settings } from "lucide-react";
 import { useStore } from "./store/useStore";
 
@@ -101,6 +101,17 @@ export default function BizTrack() {
   const [restockItemId, setRestockItemId] = useState(null);
   const [toast, setToast] = useState("");
   const [theme] = useState("light");
+  const [userName, setUserName] = useState(() => {
+    try {
+      return localStorage.getItem("biztrackUserName") || "Biz Owner";
+    } catch {
+      return "Biz Owner";
+    }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("biztrackUserName", userName); } catch {};
+  }, [userName]);
 
   const activeBiz = businesses.find((b) => b.id === activeBizId) || null;
 
@@ -179,7 +190,7 @@ export default function BizTrack() {
     showToast("Sale recorded!");
   };
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold };
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName };
 
   return (
     <div style={S.shell}>
@@ -207,7 +218,7 @@ export default function BizTrack() {
 
 /* ─── HOME SCREEN ───────────────────────────────────────────────────────────── */
 function HomeScreen({ ctx }) {
-  const { businesses, openBiz, setModal, lowStockThreshold } = ctx;
+  const { businesses, openBiz, setModal, lowStockThreshold, userName } = ctx;
   const totalRevenue = businesses.reduce((s, b) => s + calcBizStats(b).revenue, 0);
   const totalProfit = businesses.reduce((s, b) => s + calcBizStats(b).profit, 0);
   const allLowStock = businesses.flatMap((b) =>
@@ -218,10 +229,10 @@ function HomeScreen({ ctx }) {
     <div style={S.screen}>
       <div style={S.homeHeader}>
         <div>
-          <p style={S.greeting}>Good morning,</p>
+          <p style={S.greeting}>Good morning, {userName}</p>
           <h1 style={S.userName}>Your Businesses ✨</h1>
         </div>
-        <div style={S.avatar}>B</div>
+        <div style={S.avatar}>{(userName || "B").trim().charAt(0).toUpperCase() || "B"}</div>
       </div>
 
       {/* SUMMARY CARD */}
@@ -569,7 +580,7 @@ function AnalyticsScreen({ ctx }) {
 
 /* ─── SETTINGS SCREEN ───────────────────────────────────────────────────────── */
 function SettingsScreen({ ctx }) {
-  const { setScreen, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast } = ctx;
+  const { setScreen, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName } = ctx;
   const currencies = ["XAF","NGN","GHS","KES","USD","EUR"];
 
   return (
@@ -586,12 +597,16 @@ function SettingsScreen({ ctx }) {
           <p style={S.settingsSectionTitle}>Profile</p>
           <div style={S.settingsCard}>
             <div style={S.settingsRow}>
-              <div style={{ ...S.avatar, width: 48, height: 48, fontSize: 20 }}>B</div>
+              <div style={{ ...S.avatar, width: 48, height: 48, fontSize: 20 }}>{(userName || "B").trim().charAt(0).toUpperCase() || "B"}</div>
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Your Name</p>
-                <p style={S.settingsRowVal}>Business Owner</p>
+                <input
+                  style={S.settingsInput}
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
+                  placeholder="Business Owner"
+                />
               </div>
-              <span style={S.chevron}>›</span>
             </div>
           </div>
         </div>
@@ -958,7 +973,9 @@ const S = {
   homeHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "16px 24px 8px" },
   greeting: { fontSize: 13, color: "#9B7B5E", margin: 0, fontWeight: 500, letterSpacing: 0.3 },
   userName: { fontSize: 26, color: "#2C1810", margin: "2px 0 0", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: -0.5 },
+  userNameInput: { fontSize: 26, color: "#2C1810", margin: "2px 0 0", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: -0.5, border: "none", background: "transparent", padding: 0, outline: "none", width: "100%", maxWidth: 280 },
   avatar: { width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#C17F5A,#8B6914)", color: "#FAF8F4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 18, boxShadow: "0 4px 16px rgba(193,127,90,0.4)", flexShrink: 0 },
+  settingsInput: { width: "100%", border: "1px solid #E2D9CF", borderRadius: 12, padding: "10px 12px", fontSize: 14, color: "#2C1810", background: "#FFF", outline: "none", marginTop: 4 },
 
   summaryCard: { margin: "8px 24px 16px", background: "linear-gradient(135deg,#2C1810,#5C3D2E)", borderRadius: 24, padding: "22px", position: "relative", overflow: "hidden", boxShadow: "0 12px 40px rgba(44,24,16,0.35)" },
   summaryOrb: { position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)" },
