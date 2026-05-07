@@ -660,6 +660,22 @@ function SettingsScreen({ ctx }) {
       </div>
 
       <div style={S.tabInner}>
+        
+        {/* ACCOUNT LINK */}
+        <div style={S.settingsSection}>
+          <p style={S.settingsSectionTitle}>Account</p>
+          <div style={S.settingsCard}>
+            <div style={S.settingsRow} onClick={() => setScreen("account")}>
+              <div style={{ ...S.avatar, width: 40, height: 40, fontSize: 16 }}>{userName[0]}</div>
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>{userName}</p>
+                <p style={S.settingsRowSub}>Manage profile, security & data</p>
+              </div>
+              <ChevronRight size={20} color="#9B7B5E" />
+            </div>
+          </div>
+        </div>
+
         {/* PREFERENCES */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Preferences</p>
