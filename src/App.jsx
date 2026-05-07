@@ -1287,26 +1287,29 @@ function AccountScreen({ ctx }) {
         </div>
 
         
-        {/* AVATAR PICKER */}
+        
+        {/* PREMIUM AVATAR PICKER */}
         <div style={S.settingsSection}>
-          <p style={S.settingsSectionTitle}>Choose Avatar</p>
-          <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 0 12px", scrollbarWidth: "none" }}>
-            {["👤", "🦁", "🦊", "🦉", "💎", "🚀", "👑", "🎯", "💼", "🔥", "⚡️", "🌈"].map(a => (
+          <p style={S.settingsSectionTitle}>Choose Persona</p>
+          <div style={{ display: "flex", gap: 16, overflowX: "auto", padding: "8px 0 16px", scrollbarWidth: "none" }}>
+            {["/avatars/avatar1.png", "/avatars/avatar2.png", "/avatars/avatar3.png", "/avatars/avatar4.png", "/avatars/avatar5.png"].map(a => (
               <button 
                 key={a}
                 onClick={() => setUserAvatar(a)}
                 style={{ 
                   ...S.avatar, 
-                  width: 54, 
-                  height: 54, 
-                  fontSize: 24, 
+                  width: 64, 
+                  height: 64, 
                   flexShrink: 0,
+                  padding: 0,
+                  overflow: "hidden",
                   border: userAvatar === a ? "3px solid #C17F5A" : "3px solid transparent",
-                  background: userAvatar === a ? "#FFF" : "linear-gradient(135deg,#FAF8F4,#E0D6C8)",
-                  transition: "0.2s"
+                  background: "#FFF",
+                  boxShadow: userAvatar === a ? "0 8px 20px rgba(193,127,90,0.4)" : "0 4px 12px rgba(0,0,0,0.1)",
+                  transition: "0.3s transform"
                 }}
               >
-                {a}
+                <img src={a} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </button>
             ))}
           </div>
