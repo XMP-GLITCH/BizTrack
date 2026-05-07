@@ -266,12 +266,14 @@ function HomeScreen({ ctx }) {
   const allLowStock = businesses.flatMap((b) =>
     b.inventory.filter((i) => i.qty <= lowStockThreshold).map((i) => ({ ...i, bizName: b.name, bizColor: b.color }))
   );
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
     <div style={S.screen}>
       <div style={S.homeHeader}>
         <div>
-          <p style={S.greeting}>Good morning, {userName}</p>
+          <p style={S.greeting}>{greeting}, {userName}</p>
           <h1 style={S.userName}>Your Businesses ✨</h1>
         </div>
         <div style={{ ...S.avatar, cursor: "pointer" }} onClick={() => setScreen("account")}>{userAvatar?.startsWith('/') ? <img src={userAvatar} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : (userAvatar || (userName || "B")[0])}</div>
