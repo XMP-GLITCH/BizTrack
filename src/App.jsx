@@ -274,7 +274,7 @@ function HomeScreen({ ctx }) {
           <p style={S.greeting}>Good morning, {userName}</p>
           <h1 style={S.userName}>Your Businesses ✨</h1>
         </div>
-        <div style={{ ...S.avatar, cursor: "pointer" }} onClick={() => setScreen("account")}>{(userName || "B").trim().charAt(0).toUpperCase() || "B"}</div>
+        <div style={{ ...S.avatar, cursor: "pointer" }} onClick={() => setScreen("account")}>{userAvatar?.startsWith('/') ? <img src={userAvatar} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : (userAvatar || (userName || "B")[0])}</div>
       </div>
 
       {/* SUMMARY CARD */}
@@ -650,7 +650,7 @@ function AnalyticsScreen({ ctx }) {
 
 /* ─── SETTINGS SCREEN ───────────────────────────────────────────────────────── */
 function SettingsScreen({ ctx }) {
-  const { setScreen, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName } = ctx;
+  const { setScreen, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName, userAvatar } = ctx;
   const currencies = ["XAF","NGN","GHS","KES","USD","EUR"];
 
   return (
@@ -1291,7 +1291,7 @@ function AccountScreen({ ctx }) {
         {/* PREMIUM AVATAR PICKER */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Choose Persona</p>
-          <div style={{ display: "flex", gap: 16, overflowX: "auto", padding: "8px 0 16px", scrollbarWidth: "none" }}>
+          <div style={{ display: "flex", gap: 20, overflowX: "auto", padding: "8px 0 16px", scrollbarWidth: "none" }}>
             {["/avatars/avatar1.png", "/avatars/avatar2.png", "/avatars/avatar3.png", "/avatars/avatar4.png", "/avatars/avatar5.png"].map(a => (
               <button 
                 key={a}
@@ -1443,12 +1443,12 @@ const S = {
 
   summaryCard: { margin: "8px 24px 16px", background: "linear-gradient(135deg,#2C1810,#5C3D2E)", borderRadius: 24, padding: "22px", position: "relative", overflow: "hidden", boxShadow: "0 12px 40px rgba(44,24,16,0.35)" },
   summaryOrb: { position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)" },
-  summaryLabel: { fontSize: 11, color: "rgba(255,255,255,0.6)", margin: "0 0 6px", letterSpacing: 0.8, textTransform: "uppercase", fontWeight: 500 },
+  summaryLabel: { fontSize: 12, color: "rgba(255,255,255,0.85)", margin: "0 0 6px", letterSpacing: 0.8, textTransform: "uppercase", fontWeight: 600 },
   summaryAmount: { fontSize: 28, color: "#FAF8F4", margin: "0 0 18px", fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, letterSpacing: -1 },
   summaryRow: { display: "flex", alignItems: "center", gap: 16 },
   summaryDivider: { width: 1, height: 28, background: "rgba(255,255,255,0.2)" },
-  summarySubLabel: { fontSize: 10, color: "rgba(255,255,255,0.5)", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: 0.5 },
-  summarySubVal: { fontSize: 14, color: "#FAF8F4", margin: 0, fontWeight: 600 },
+  summarySubLabel: { fontSize: 11, color: "rgba(255,255,255,0.8)", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 },
+  summarySubVal: { fontSize: 16, color: "#FAF8F4", margin: 0, fontWeight: 700 },
 
   alertBanner: { margin: "0 24px 14px", background: "#FFF8E1", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 10, border: "1px solid #F0C040" },
   alertIcon: { fontSize: 18, flexShrink: 0 },
@@ -1558,7 +1558,7 @@ const S = {
 
   // MODALS
   modalOverlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", zIndex: 100 },
-  modalSheet: { background: "#FAF8F4", borderRadius: "24px 24px 0 0", width: "100%", maxHeight: "90%", overflowY: "auto", paddingBottom: 20 },
+  modalSheet: { background: "#FAF8F4", borderRadius: "24px 24px 0 0", width: "100%", maxHeight: "90%", overflowY: "auto", paddingBottom: 40 },
   modalHandle: { width: 40, height: 4, background: "#D4B896", borderRadius: 99, margin: "14px auto 4px" },
   modalTitle: { fontSize: 18, fontWeight: 800, color: "#2C1810", margin: "8px 24px 16px", fontFamily: "'Playfair Display',Georgia,serif" },
   modalBody: { padding: "0 24px", display: "flex", flexDirection: "column", gap: 12 },
@@ -1566,8 +1566,8 @@ const S = {
   fieldLabel: { fontSize: 13, fontWeight: 700, color: "#5C3D2E", margin: "4px 0 4px", letterSpacing: 0.2 },
   input: { width: "100%", height: 48, borderRadius: 14, border: "1.5px solid #E0D6C8", padding: "0 14px", fontSize: 14, fontFamily: "'DM Sans',sans-serif", color: "#2C1810", background: "#FFFFFF", boxSizing: "border-box", outline: "none", appearance: "auto" },
 
-  colorRow: { display: "flex", gap: 10, flexWrap: "wrap" },
-  colorDot: { width: 36, height: 36, borderRadius: "50%", border: "none", cursor: "pointer", outlineOffset: 3 },
+  colorRow: { display: "flex", gap: 14, flexWrap: "wrap" },
+  colorDot: { width: 44, height: 44, borderRadius: "50%", border: "none", cursor: "pointer", outlineOffset: 3 },
   emojiGrid: { display: "flex", flexWrap: "wrap", gap: 4 },
   emojiPick: { fontSize: 24, border: "none", cursor: "pointer", padding: "6px", borderRadius: 10, width: 44, height: 44 },
 
