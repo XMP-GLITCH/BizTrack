@@ -7,43 +7,7 @@ const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C
 const COLOR_NAMES = ["Terracotta","Gold","Sage","Rose","Slate","Plum","Mint","Sand"];
 const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Accessories","Other"];
 
-const INIT_BUSINESSES = [
-  {
-    id: 1, name: "Crochet by Sabi", category: "Crochet", color: "#C17F5A", emoji: "🧶",
-    inventory: [
-      { id: 1, name: "Bucket Hat", qty: 8, cost: 1500, price: 4500, sold: 14 },
-      { id: 2, name: "Crop Top", qty: 3, cost: 2500, price: 7000, sold: 9 },
-      { id: 3, name: "Tote Bag", qty: 11, cost: 1200, price: 3500, sold: 6 },
-    ],
-    sales: [
-      { id: 1, itemName: "Bucket Hat", qty: 2, revenue: 9000, cost: 3000, date: "2024-05-06" },
-      { id: 2, itemName: "Crop Top", qty: 1, revenue: 7000, cost: 2500, date: "2024-05-05" },
-      { id: 3, itemName: "Tote Bag", qty: 3, revenue: 10500, cost: 3600, date: "2024-05-03" },
-    ],
-  },
-  {
-    id: 2, name: "Adé Jewelry", category: "Jewelry", color: "#8B6914", emoji: "📿",
-    inventory: [
-      { id: 1, name: "Cowrie Necklace", qty: 15, cost: 800, price: 3500, sold: 22 },
-      { id: 2, name: "Gold Waist Chain", qty: 6, cost: 2000, price: 6500, sold: 11 },
-      { id: 3, name: "Ear Cuffs Set", qty: 2, cost: 500, price: 2000, sold: 18 },
-    ],
-    sales: [
-      { id: 1, itemName: "Cowrie Necklace", qty: 3, revenue: 10500, cost: 2400, date: "2024-05-06" },
-      { id: 2, itemName: "Gold Waist Chain", qty: 1, revenue: 6500, cost: 2000, date: "2024-05-04" },
-    ],
-  },
-  {
-    id: 3, name: "Bloom Skincare", category: "Beauty", color: "#7A9B76", emoji: "🌿",
-    inventory: [
-      { id: 1, name: "Shea Body Butter", qty: 20, cost: 800, price: 2500, sold: 14 },
-      { id: 2, name: "Rosehip Oil", qty: 7, cost: 1500, price: 4000, sold: 8 },
-    ],
-    sales: [
-      { id: 1, itemName: "Shea Body Butter", qty: 5, revenue: 12500, cost: 4000, date: "2024-05-06" },
-    ],
-  },
-];
+const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
 
@@ -86,6 +50,76 @@ let nextId = 100;
 const uid = () => ++nextId;
 
 /* ─── ROOT ─────────────────────────────────────────────────────────────────── */
+
+/* ─── INSTALL PROMPT ────────────────────────────────────────────────────────── */
+function InstallPrompt() {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(true);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const isStandAloneMatch = window.matchMedia('(display-mode: standalone)').matches;
+    const isIOSStandalone = window.navigator.standalone === true;
+    setIsStandalone(isStandAloneMatch || isIOSStandalone);
+
+    if (isStandAloneMatch || isIOSStandalone) return;
+
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
+    setIsIOS(isIosDevice);
+
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    }
+  };
+
+  if (isStandalone || dismissed) return null;
+  if (!deferredPrompt && !isIOS) return null;
+
+  return (
+    <div style={{ position: "absolute", bottom: 85, left: 16, right: 16, background: "#FFFFFF", borderRadius: 16, padding: "14px 16px", boxShadow: "0 8px 30px rgba(44,24,16,0.15)", border: "1px solid #E2D9CF", zIndex: 100, display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <button onClick={() => setDismissed(true)} style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", color: "#9B7B5E", cursor: "pointer", padding: 4 }}>
+        <X size={16} />
+      </button>
+      <div style={{ background: "#F5F0EA", borderRadius: 12, padding: 10, flexShrink: 0, color: "#8B6914" }}>
+        <Download size={24} />
+      </div>
+      <div style={{ flex: 1, paddingRight: 16 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: "#2C1810", margin: "0 0 4px" }}>Install BizTrack</p>
+        {isIOS ? (
+          <p style={{ fontSize: 12, color: "#5C3D2E", margin: 0, lineHeight: 1.4 }}>
+            Must use <strong>Safari</strong> to install: Tap <Share size={12} style={{ display: "inline", verticalAlign: "middle" }} /> then <strong>Add to Home Screen</strong> <PlusSquare size={12} style={{ display: "inline", verticalAlign: "middle" }} />
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: 12, color: "#5C3D2E", margin: "0 0 8px", lineHeight: 1.4 }}>
+              Add to your home screen for offline access and a native app feel.
+            </p>
+            <button onClick={handleInstallClick} style={{ background: "#2C1810", color: "#FFF", border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              Install App
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function BizTrack() {
   const businesses = useStore(s => s.businesses);
   const setBusinesses = useStore(s => s.setBusinesses);
