@@ -1092,8 +1092,8 @@ function Onboarding({ ctx }) {
   };
 
   return (
-    <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4", textAlign: "center" }}>
-      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 40 }}>
+    <div style={{ ...S.shell, background: "linear-gradient(90deg, #C17F5A 50%, #2C1810 50%)", color: "#FAF8F4", textAlign: "center" }}>
+      <div style={{ ...S.phone, background: "transparent", justifyContent: "center", padding: 40 }}>
         {step === 0 && (
           <div style={{ animation: "fadeIn 0.8s ease" }}>
             <img src="/apple-touch-icon.png" style={{ width: 88, height: 88, marginBottom: 24, borderRadius: 22, boxShadow: "0 10px 30px rgba(0,0,0,0.3)" }} />
