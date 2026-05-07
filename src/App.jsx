@@ -1097,7 +1097,7 @@ function Onboarding({ ctx }) {
         {step === 0 && (
           <div style={{ animation: "fadeIn 0.8s ease" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
-              <img src="/apple-touch-icon.png" style={{ width: 120, height: 120, borderRadius: 30, boxShadow: "0 20px 50px rgba(0,0,0,0.4)" }} />
+              <img src="/wordmark-light.png" style={{ width: 280, height: "auto", marginBottom: 12 }} />
             </div>
             <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16 }}>Your all-in-one business growth companion.</p>
