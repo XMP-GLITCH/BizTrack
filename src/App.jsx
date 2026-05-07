@@ -1092,7 +1092,7 @@ function Onboarding({ ctx }) {
   };
 
   return (
-    <div style={{ ...S.shell, background: "linear-gradient(90deg, #C17F5A 50%, #2C1810 50%)", color: "#FAF8F4", textAlign: "center" }}>
+    <div style={{ ...S.shell, background: "linear-gradient(90deg, #2C1810 50%, #C17F5A 50%)", color: "#FAF8F4", textAlign: "center" }}>
       <div style={{ ...S.phone, background: "transparent", justifyContent: "center", padding: 40 }}>
         {step === 0 && (
           <div style={{ animation: "fadeIn 0.8s ease" }}>
