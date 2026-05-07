@@ -52,8 +52,7 @@ const uid = () => ++nextId;
 /* ─── ROOT ─────────────────────────────────────────────────────────────────── */
 
 /* ─── INSTALL PROMPT ────────────────────────────────────────────────────────── */
-function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(true);
   const [dismissed, setDismissed] = useState(false);
@@ -62,22 +61,10 @@ function InstallPrompt() {
     const isStandAloneMatch = window.matchMedia('(display-mode: standalone)').matches;
     const isIOSStandalone = window.navigator.standalone === true;
     setIsStandalone(isStandAloneMatch || isIOSStandalone);
-
     if (isStandAloneMatch || isIOSStandalone) return;
-
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isIosDevice);
-
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
   }, []);
 
   const handleInstallClick = async () => {
@@ -121,6 +108,17 @@ function InstallPrompt() {
 }
 
 export default function BizTrack() {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      console.log("Install prompt captured!");
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
   const businesses = useStore(s => s.businesses);
   const setBusinesses = useStore(s => s.setBusinesses);
   const currency = useStore(s => s.currency);
@@ -238,7 +236,7 @@ export default function BizTrack() {
           {screen === "settings" && <SettingsScreen ctx={ctx} />}
           {screen === "analytics" && <AnalyticsScreen ctx={ctx} />}
         </div>
-        <InstallPrompt />
+        <InstallPrompt deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />
         <BottomNav ctx={ctx} />
         {onboardingComplete && !hasSeenGuide && <FeatureGuide ctx={ctx} />}
 
