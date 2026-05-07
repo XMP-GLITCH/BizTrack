@@ -1097,7 +1097,10 @@ function Onboarding({ ctx }) {
         {step === 0 && (
           <div style={{ animation: "fadeIn 0.8s ease" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
-              <img src="/wordmark-light.png" style={{ width: 280, height: "auto", marginBottom: 12 }} />
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 32, position: "relative" }}>
+              <div style={{ position: "absolute", width: 140, height: 140, background: "rgba(193, 127, 90, 0.15)", filter: "blur(30px)", borderRadius: "50%" }} />
+              <img src="/avatar-1-coin.svg" style={{ width: 140, height: 140, position: "relative", zIndex: 1 }} />
+            </div>
             </div>
             <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16 }}>Your all-in-one business growth companion.</p>
