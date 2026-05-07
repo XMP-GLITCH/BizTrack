@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { Home, BarChart2, PlusCircle, Settings } from "lucide-react";
+import { useState } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight } from "lucide-react";
 import { useStore } from "./store/useStore";
-
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
 const COLOR_NAMES = ["Terracotta","Gold","Sage","Rose","Slate","Plum","Mint","Sand"];
@@ -101,17 +101,8 @@ export default function BizTrack() {
   const [restockItemId, setRestockItemId] = useState(null);
   const [toast, setToast] = useState("");
   const [theme] = useState("light");
-  const [userName, setUserName] = useState(() => {
-    try {
-      return localStorage.getItem("biztrackUserName") || "Biz Owner";
-    } catch {
-      return "Biz Owner";
-    }
-  });
-
-  useEffect(() => {
-    try { localStorage.setItem("biztrackUserName", userName); } catch {};
-  }, [userName]);
+  const userName = useStore(s => s.userName);
+  const setUserName = useStore(s => s.setUserName);
 
   const activeBiz = businesses.find((b) => b.id === activeBizId) || null;
 
@@ -261,7 +252,7 @@ function HomeScreen({ ctx }) {
       {/* LOW STOCK BANNER */}
       {allLowStock.length > 0 && (
         <div style={S.alertBanner}>
-          <span style={S.alertIcon}>⚠️</span>
+          <AlertTriangle style={S.alertIcon} size={18} color="#8B6914" />
           <div>
             <p style={S.alertTitle}>Low Stock on {allLowStock.length} item{allLowStock.length > 1 ? "s" : ""}</p>
             <p style={S.alertSub}>{allLowStock.map((i) => i.name).join(", ")}</p>
@@ -278,7 +269,7 @@ function HomeScreen({ ctx }) {
       <div style={S.cardList}>
         {businesses.length === 0 && (
           <div style={S.emptyState}>
-            <p style={S.emptyIcon}>🏪</p>
+            <div style={S.emptyIcon}><Store size={40} color="#2C1810" strokeWidth={1.5} /></div>
             <p style={S.emptyTitle}>No businesses yet</p>
             <p style={S.emptySub}>Tap "+ Add New" to get started</p>
           </div>
@@ -317,12 +308,12 @@ function BusinessScreen({ ctx }) {
   return (
     <div style={S.screen}>
       <div style={S.bizHeader}>
-        <button style={S.backBtn} onClick={() => setScreen("home")}>←</button>
+        <button style={S.backBtn} onClick={() => setScreen("home")}><ArrowLeft size={22} /></button>
         <div style={S.bizHeaderCenter}>
           <span style={{ fontSize: 18 }}>{activeBiz.emoji}</span>
           <span style={S.bizHeaderName}>{activeBiz.name}</span>
         </div>
-        <button style={S.iconBtn} onClick={() => setModal("deleteBiz")}>🗑</button>
+        <button style={S.iconBtn} onClick={() => setModal("deleteBiz")}><Trash2 size={20} color="#2C1810" /></button>
       </div>
 
       {/* HERO */}
@@ -374,14 +365,14 @@ function OverviewTab({ biz, stats, lowStockThreshold, setModal }) {
     <div style={S.tabInner}>
       {best && (
         <div style={S.infoCard}>
-          <p style={S.infoLabel}>🏆 Best Seller</p>
+          <p style={{...S.infoLabel, display:"flex", alignItems:"center", gap:6}}><Award size={14} color="#8B6914"/> Best Seller</p>
           <p style={S.infoVal}>{best.name}</p>
           <p style={S.infoSub}>{best.sold} units sold · {fmt(best.price)} each · {(((best.price - best.cost) / best.price) * 100).toFixed(0)}% margin</p>
         </div>
       )}
       {lowStock.length > 0 && (
         <div style={{ ...S.infoCard, borderLeftColor: "#E67E22" }}>
-          <p style={S.infoLabel}>⚠️ Low Stock</p>
+          <p style={{...S.infoLabel, display:"flex", alignItems:"center", gap:6}}><AlertTriangle size={14} color="#E67E22"/> Low Stock</p>
           {lowStock.map((i) => (
             <p key={i.id} style={S.infoSub}>{i.name} — only {i.qty} left</p>
           ))}
@@ -433,7 +424,7 @@ function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId }) 
       <button style={S.dashedBtn} onClick={() => setModal("addItem")}>+ Add New Item</button>
       {biz.inventory.length === 0 && (
         <div style={S.emptyState}>
-          <p style={S.emptyIcon}>📦</p>
+          <div style={S.emptyIcon}><Package size={40} color="#2C1810" strokeWidth={1.5} /></div>
           <p style={S.emptyTitle}>No items yet</p>
           <p style={S.emptySub}>Add your first product above</p>
         </div>
@@ -483,7 +474,7 @@ function SalesTab({ biz, setModal }) {
       )}
       {biz.sales.length === 0 && (
         <div style={S.emptyState}>
-          <p style={S.emptyIcon}>💰</p>
+          <div style={S.emptyIcon}><Coins size={40} color="#2C1810" strokeWidth={1.5} /></div>
           <p style={S.emptyTitle}>No sales yet</p>
           <p style={S.emptySub}>Record your first sale above</p>
         </div>
@@ -516,7 +507,7 @@ function AnalyticsScreen({ ctx }) {
   return (
     <div style={S.screen}>
       <div style={S.pageHeader}>
-        <button style={S.backBtn} onClick={() => setScreen("home")}>←</button>
+        <button style={S.backBtn} onClick={() => setScreen("home")}><ArrowLeft size={22} /></button>
         <h2 style={S.pageTitle}>Analytics</h2>
         <div style={{ width: 32 }} />
       </div>
@@ -616,7 +607,7 @@ function SettingsScreen({ ctx }) {
           <p style={S.settingsSectionTitle}>Preferences</p>
           <div style={S.settingsCard}>
             <div style={S.settingsRow}>
-              <span style={S.settingsIcon}>💱</span>
+              <DollarSign size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Currency</p>
               </div>
@@ -630,7 +621,7 @@ function SettingsScreen({ ctx }) {
             </div>
             <div style={S.settingsDivider} />
             <div style={S.settingsRow}>
-              <span style={S.settingsIcon}>⚠️</span>
+              <AlertTriangle size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Low Stock Alert</p>
                 <p style={S.settingsRowSub}>Alert when qty is at or below</p>
@@ -651,21 +642,21 @@ function SettingsScreen({ ctx }) {
           <p style={S.settingsSectionTitle}>Data</p>
           <div style={S.settingsCard}>
             <div style={S.settingsRow} onClick={() => showToast("Export coming in v2!")}>
-              <span style={S.settingsIcon}>📤</span>
+              <Upload size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Export as CSV</p>
                 <p style={S.settingsRowSub}>Download all your data</p>
               </div>
-              <span style={S.chevron}>›</span>
+              <ChevronRight size={20} color="#9B7B5E" />
             </div>
             <div style={S.settingsDivider} />
             <div style={S.settingsRow} onClick={() => showToast("Cloud sync coming in v2!")}>
-              <span style={S.settingsIcon}>☁️</span>
+              <Cloud size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Cloud Backup</p>
                 <p style={S.settingsRowSub}>Sync across devices (v2)</p>
               </div>
-              <span style={{ ...S.chevron, color: "#C17F5A" }}>Soon</span>
+              <span style={{ ...S.settingsRowSub, color: "#C17F5A", fontWeight:700 }}>Soon</span>
             </div>
           </div>
         </div>
@@ -675,7 +666,7 @@ function SettingsScreen({ ctx }) {
           <p style={S.settingsSectionTitle}>About</p>
           <div style={S.settingsCard}>
             <div style={S.settingsRow}>
-              <span style={S.settingsIcon}>📱</span>
+              <Smartphone size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>BizTrack</p>
                 <p style={S.settingsRowSub}>Version 1.0.0 · Built with ❤️</p>
@@ -818,6 +809,47 @@ function AddItemModal({ ctx }) {
   );
 }
 
+function RestockModal({ ctx }) {
+  const { setModal, activeBiz, restockItemId, restockInventoryItem, setRestockItemId } = ctx;
+  const item = activeBiz?.inventory.find((i) => i.id === restockItemId);
+  const [qty, setQty] = useState("");
+  const [cost, setCost] = useState(item ? item.cost : "");
+
+  const submit = () => {
+    if (!item || !qty) return;
+    restockInventoryItem(activeBiz.id, item.id, Number(qty), cost ? Number(cost) : null);
+    setRestockItemId(null);
+    setModal(null);
+  };
+
+  return (
+    <ModalShell onClose={() => { setRestockItemId(null); setModal(null); }} title="Restock Item">
+      <div style={S.modalBody}>
+        {!item ? (
+          <div style={S.emptyState}>
+            <div style={S.emptyIcon}><AlertTriangle size={40} color="#8B6914" strokeWidth={1.5} /></div>
+            <p style={S.emptyTitle}>Item not found</p>
+            <p style={S.emptySub}>Select an item from inventory before restocking.</p>
+          </div>
+        ) : (
+          <>
+            <p style={S.fieldLabel}>Item</p>
+            <input style={S.input} value={item.name} disabled />
+
+            <p style={S.fieldLabel}>Additional Quantity</p>
+            <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 10" />
+
+            <p style={S.fieldLabel}>Updated Cost per Unit (optional)</p>
+            <input style={S.input} type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Leave blank to keep current cost" />
+
+            <button style={S.primaryBtn} onClick={submit}>Restock Item</button>
+          </>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
 function AddSaleModal({ ctx }) {
   const { setModal, activeBiz, addSale } = ctx;
   const [itemId, setItemId] = useState(activeBiz?.inventory[0]?.id || "");
@@ -916,7 +948,7 @@ function DeleteBizModal({ ctx }) {
     <ModalShell onClose={() => setModal(null)} title="Delete Business">
       <div style={S.modalBody}>
         <div style={S.deleteWarning}>
-          <p style={S.deleteIcon}>⚠️</p>
+          <div style={S.deleteIcon}><AlertTriangle size={36} color="#C0392B" strokeWidth={1.5} /></div>
           <p style={S.deleteTitle}>Delete "{activeBiz?.name}"?</p>
           <p style={S.deleteSub}>This will permanently remove this business and all its inventory and sales data. This cannot be undone.</p>
         </div>
