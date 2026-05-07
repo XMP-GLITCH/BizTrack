@@ -260,7 +260,7 @@ export default function BizTrack() {
 
 /* ─── HOME SCREEN ───────────────────────────────────────────────────────────── */
 function HomeScreen({ ctx }) {
-  const { businesses, openBiz, setModal, lowStockThreshold, userName, setScreen } = ctx;
+  const { businesses, openBiz, setModal, lowStockThreshold, userName, setScreen, userAvatar } = ctx;
   const totalRevenue = businesses.reduce((s, b) => s + calcBizStats(b).revenue, 0);
   const totalProfit = businesses.reduce((s, b) => s + calcBizStats(b).profit, 0);
   const allLowStock = businesses.flatMap((b) =>
