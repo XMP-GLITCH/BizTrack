@@ -20,11 +20,32 @@
 }
 
 @layer base {
+  :root {
+    --bg-primary: #FAF8F4;
+    --text-primary: #2C1810;
+    --text-secondary: #9B7B5E;
+    --card-bg: #FFFFFF;
+    --border-color: #E0D6C8;
+    --accent-color: #C17F5A;
+    --status-bar-bg: #FAF8F4;
+  }
+
+  .dark {
+    --bg-primary: #1A0E0A;
+    --text-primary: #FAF8F4;
+    --text-secondary: #C17F5A;
+    --card-bg: #2C1810;
+    --border-color: #3D271D;
+    --accent-color: #E27D60;
+    --status-bar-bg: #1A0E0A;
+  }
+
   body {
-    background-color: var(--color-warm-off-white);
-    color: #333333;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   h1, h2, h3, h4, h5, h6 {

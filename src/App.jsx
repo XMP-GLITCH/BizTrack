@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock } from "lucide-react";
+import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun } from "lucide-react";
 import { useStore } from "./store/useStore";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
@@ -79,22 +79,22 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
   if (!deferredPrompt && !isIOS) return null;
 
   return (
-    <div style={{ position: "absolute", bottom: 85, left: 16, right: 16, background: "#FFFFFF", borderRadius: 16, padding: "14px 16px", boxShadow: "0 8px 30px rgba(44,24,16,0.15)", border: "1px solid #E2D9CF", zIndex: 100, display: "flex", gap: 12, alignItems: "flex-start" }}>
-      <button onClick={() => setDismissed(true)} style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", color: "#9B7B5E", cursor: "pointer", padding: 4 }}>
+    <div style={{ position: "absolute", bottom: 85, left: 16, right: 16, background: "var(--card-bg)", borderRadius: 16, padding: "14px 16px", boxShadow: "0 8px 30px rgba(44,24,16,0.15)", border: "1px solid var(--border-color)", zIndex: 100, display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <button onClick={() => setDismissed(true)} style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", padding: 4 }}>
         <X size={16} />
       </button>
       <div style={{ background: "#F5F0EA", borderRadius: 12, padding: 10, flexShrink: 0, color: "#8B6914" }}>
         <Download size={24} />
       </div>
       <div style={{ flex: 1, paddingRight: 16 }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: "#2C1810", margin: "0 0 4px" }}>Install BizTrack</p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 4px" }}>Install BizTrack</p>
         {isIOS ? (
-          <p style={{ fontSize: 12, color: "#5C3D2E", margin: 0, lineHeight: 1.4 }}>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>
             Must use <strong>Safari</strong> to install: Tap <Share size={12} style={{ display: "inline", verticalAlign: "middle" }} /> then <strong>Add to Home Screen</strong> <PlusSquare size={12} style={{ display: "inline", verticalAlign: "middle" }} />
           </p>
         ) : (
           <>
-            <p style={{ fontSize: 12, color: "#5C3D2E", margin: "0 0 8px", lineHeight: 1.4 }}>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 8px", lineHeight: 1.4 }}>
               Add to your home screen for offline access and a native app feel.
             </p>
             <button onClick={handleInstallClick} style={{ background: "#2C1810", color: "#FFF", border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
@@ -132,9 +132,18 @@ export default function BizTrack() {
   const [modal, setModal] = useState(null); // null | "addBiz" | "addItem" | "restock" | "addSale" | "editBiz" | "deleteBiz" | "toast"
   const [restockItemId, setRestockItemId] = useState(null);
   const [toast, setToast] = useState("");
-  const [theme] = useState("light");
   const userName = useStore(s => s.userName);
   const setUserName = useStore(s => s.setUserName);
+  const isDarkMode = useStore(s => s.isDarkMode);
+  const setIsDarkMode = useStore(s => s.setIsDarkMode);
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
 
   const activeBiz = businesses.find((b) => b.id === activeBizId) || null;
 
@@ -224,7 +233,7 @@ export default function BizTrack() {
   const setUserEmail = useStore(s => s.setUserEmail);
   const userAvatar = useStore(s => s.userAvatar);
   const setUserAvatar = useStore(s => s.setUserAvatar);
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin, userEmail, setUserEmail, userAvatar, setUserAvatar };
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin, userEmail, setUserEmail, userAvatar, setUserAvatar };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -599,8 +608,8 @@ function AnalyticsScreen({ ctx }) {
               <YAxis tickFormatter={(val) => val >= 1000 ? (val / 1000) + 'k' : val} tick={{ fontSize: 10, fill: "#9B7B5E", fontFamily: "'DM Sans', sans-serif" }} tickLine={false} axisLine={false} width={40} />
               <Tooltip 
                 cursor={{ fill: "rgba(44,24,16,0.04)" }} 
-                contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 16px rgba(44,24,16,0.1)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: "#2C1810" }} 
-                itemStyle={{ color: "#2C1810" }} 
+                contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 16px rgba(44,24,16,0.1)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: "var(--text-primary)" }} 
+                itemStyle={{ color: "var(--text-primary)" }} 
                 formatter={(value) => [fmt(value), "Profit"]} 
               />
               <Bar dataKey="profit" radius={[8, 8, 0, 0]}>
@@ -652,7 +661,7 @@ function AnalyticsScreen({ ctx }) {
 
 /* ─── SETTINGS SCREEN ───────────────────────────────────────────────────────── */
 function SettingsScreen({ ctx }) {
-  const { setScreen, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName, userAvatar } = ctx;
+  const { setScreen, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
   const currencies = ["XAF","NGN","GHS","KES","USD","EUR"];
 
   return (
@@ -675,7 +684,40 @@ function SettingsScreen({ ctx }) {
                 <p style={S.settingsRowLabel}>{userName}</p>
                 <p style={S.settingsRowSub}>Manage profile, security & data</p>
               </div>
-              <ChevronRight size={20} color="#9B7B5E" />
+              <ChevronRight size={20} color="var(--text-secondary)" />
+            </div>
+          </div>
+        </div>
+
+        {/* APPEARANCE */}
+        <div style={S.settingsSection}>
+          <p style={S.settingsSectionTitle}>Appearance</p>
+          <div style={S.settingsCard}>
+            <div style={S.settingsRow} onClick={() => setIsDarkMode(!isDarkMode)}>
+              {isDarkMode ? <Moon size={20} color="var(--accent-color)" /> : <Sun size={20} color="var(--accent-color)" />}
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Dark Mode</p>
+                <p style={S.settingsRowSub}>{isDarkMode ? "Enabled" : "Disabled"}</p>
+              </div>
+              <div style={{ 
+                width: 44, 
+                height: 24, 
+                borderRadius: 20, 
+                background: isDarkMode ? "var(--accent-color)" : "#E0D6C8", 
+                position: "relative",
+                transition: "0.3s"
+              }}>
+                <div style={{ 
+                  width: 18, 
+                  height: 18, 
+                  borderRadius: "50%", 
+                  background: "var(--card-bg)", 
+                  position: "absolute", 
+                  top: 3, 
+                  left: isDarkMode ? 23 : 3,
+                  transition: "0.3s"
+                }} />
+              </div>
             </div>
           </div>
         </div>
@@ -735,7 +777,7 @@ function SettingsScreen({ ctx }) {
                 <p style={S.settingsRowLabel}>Cloud Backup</p>
                 <p style={S.settingsRowSub}>Sync across devices (v2)</p>
               </div>
-              <span style={{ ...S.settingsRowSub, color: "#C17F5A", fontWeight:700 }}>Soon</span>
+              <span style={{ ...S.settingsRowSub, color: "var(--accent-color)", fontWeight:700 }}>Soon</span>
             </div>
           </div>
         </div>
@@ -989,7 +1031,7 @@ function AddSaleModal({ ctx }) {
 
             <div>
               <p style={S.fieldLabel}>Actual Selling Price (XAF)</p>
-              <p style={{ fontSize: 11, color: "#9B7B5E", margin: "-4px 0 6px", fontWeight: 500 }}>
+              <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "-4px 0 6px", fontWeight: 500 }}>
                 Asking price: {selectedItem ? fmt(selectedItem.price) : "—"} · Change if you sold for less or more
               </p>
               <input
@@ -1065,7 +1107,7 @@ function BottomNav({ ctx }) {
           onClick={t.action || (() => setScreen(t.id))}
         >
           <span style={{ display: "flex", alignItems: "center", justifyContent: "center", ...(t.id === "add" ? S.addNavIcon : { color: screen === t.id ? "#2C1810" : "#9B7B5E" }) }}>{t.icon}</span>
-          <span style={{ ...S.navLabel, ...(screen === t.id ? { color: "#2C1810" } : {}) }}>{t.label}</span>
+          <span style={{ ...S.navLabel, ...(screen === t.id ? { color: "var(--text-primary)" } : {}) }}>{t.label}</span>
         </button>
       ))}
     </div>
@@ -1094,7 +1136,7 @@ function Onboarding({ ctx }) {
   };
 
   return (
-    <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4", textAlign: "center" }}>
+    <div style={{ ...S.shell, background: "#2C1810", color: "var(--bg-primary)", textAlign: "center" }}>
       <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 40 }}>
         {step === 0 && (
           <div style={{ animation: "fadeIn 0.8s ease" }}>
@@ -1104,33 +1146,33 @@ function Onboarding({ ctx }) {
               <img src="/avatar-1-coin.svg" style={{ width: 140, height: 140, position: "relative", zIndex: 1 }} />
             </div>
             </div>
-            <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
+            <h1 style={{ ...S.userName, color: "var(--bg-primary)", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16 }}>Your all-in-one business growth companion.</p>
-            <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 40 }} onClick={next}>Get Started</button>
+            <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 40 }} onClick={next}>Get Started</button>
           </div>
         )}
         {step === 1 && (
           <div style={{ animation: "fadeIn 0.5s ease" }}>
-            <h2 style={{ ...S.sectionLabel, color: "#FAF8F4", fontSize: 24, marginBottom: 24 }}>What's your name?</h2>
+            <h2 style={{ ...S.sectionLabel, color: "var(--bg-primary)", fontSize: 24, marginBottom: 24 }}>What's your name?</h2>
             <input 
-              style={{ ...S.input, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#FAF8F4", textAlign: "center", fontSize: 18 }}
+              style={{ ...S.input, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "var(--bg-primary)", textAlign: "center", fontSize: 18 }}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Sabi"
               autoFocus
             />
-            <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 24, opacity: name.trim() ? 1 : 0.5 }} disabled={!name.trim()} onClick={next}>Continue</button>
+            <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 24, opacity: name.trim() ? 1 : 0.5 }} disabled={!name.trim()} onClick={next}>Continue</button>
           </div>
         )}
         {step === 3 && (
           <div style={{ animation: "fadeIn 0.5s ease" }}>
-            <h2 style={{ ...S.sectionLabel, color: "#FAF8F4", fontSize: 24, marginBottom: 12 }}>All set, {name}!</h2>
+            <h2 style={{ ...S.sectionLabel, color: "var(--bg-primary)", fontSize: 24, marginBottom: 12 }}>All set, {name}!</h2>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 32 }}>Let's start by adding your first business on the home screen.</p>
             <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 20, padding: 30, border: "1.5px dashed rgba(255,255,255,0.2)" }}>
                <Store size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 12 }} />
                <p style={{ fontSize: 14, color: "rgba(255,255,255,0.5)" }}>Your dashboard is waiting...</p>
             </div>
-            <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 40 }} onClick={next}>Enter Dashboard</button>
+            <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 40 }} onClick={next}>Enter Dashboard</button>
           </div>
         )}
       </div>
@@ -1159,7 +1201,7 @@ function PinLock({ ctx, onUnlock }) {
   };
 
   return (
-    <div style={{ ...S.shell, background: "#FAF8F4" }}>
+    <div style={{ ...S.shell, background: "var(--bg-primary)" }}>
       <div style={{ ...S.phone, padding: 40, alignItems: "center", justifyContent: "center" }}>
         <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, marginBottom: 16 }}>{userAvatar?.startsWith('/') ? <img src={userAvatar} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : (userAvatar || (userName || "B")[0])}</div>
         <h2 style={{ ...S.userName, marginBottom: 8 }}>Welcome back</h2>
@@ -1222,14 +1264,14 @@ function FeatureGuide({ ctx }) {
         top: current.pos === "bottom" ? rect.bottom + 20 : rect.top - 120,
         left: Math.max(20, Math.min(window.innerWidth - 220, rect.left + rect.width/2 - 100)),
         width: 200,
-        background: "#FFFFFF",
+        background: "var(--card-bg)",
         borderRadius: 16,
         padding: 16,
         boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
         pointerEvents: "auto",
         animation: "slideIn 0.3s ease"
       }}>
-        <p style={{ fontSize: 13, color: "#2C1810", fontWeight: 500, margin: "0 0 12px", lineHeight: 1.4 }}>{current.text}</p>
+        <p style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 500, margin: "0 0 12px", lineHeight: 1.4 }}>{current.text}</p>
         <button style={{ ...S.primaryBtn, padding: "8px", fontSize: 12 }} onClick={next}>
           {step === steps.length - 1 ? "Finish Guide" : "Next Tip"}
         </button>
@@ -1270,7 +1312,7 @@ function AccountScreen({ ctx }) {
             <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, boxShadow: "0 8px 24px rgba(0,0,0,0.2)" }}>{userAvatar?.startsWith('/') ? <img src={userAvatar} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : (userAvatar || (userName || "B")[0])}</div>
             <div>
               <p style={{ ...S.summaryLabel, margin: 0, opacity: 0.8 }}>Owner Profile</p>
-              <h2 style={{ ...S.userName, color: "#FAF8F4", fontSize: 24, marginTop: 4 }}>{userName}</h2>
+              <h2 style={{ ...S.userName, color: "var(--bg-primary)", fontSize: 24, marginTop: 4 }}>{userName}</h2>
               <p style={{ ...S.greeting, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>{userEmail || "No email linked"}</p>
             </div>
           </div>
@@ -1306,7 +1348,7 @@ function AccountScreen({ ctx }) {
                   padding: 0,
                   overflow: "hidden",
                   border: userAvatar === a ? "3px solid #C17F5A" : "3px solid transparent",
-                  background: "#FFF",
+                  background: "var(--card-bg)",
                   boxShadow: userAvatar === a ? "0 8px 20px rgba(193,127,90,0.4)" : "0 4px 12px rgba(0,0,0,0.1)",
                   transition: "0.3s transform"
                 }}
@@ -1374,7 +1416,7 @@ function AccountScreen({ ctx }) {
                 <p style={S.settingsRowSub}>{isPinEnabled ? "Enabled — Tap to disable" : "Disabled — Tap to enable"}</p>
               </div>
               <div style={{ width: 40, height: 20, background: isPinEnabled ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
-                <div style={{ width: 16, height: 16, background: "#FFF", borderRadius: "50%", position: "absolute", top: 2, left: isPinEnabled ? 22 : 2, transition: "0.3s" }} />
+                <div style={{ width: 16, height: 16, background: "var(--card-bg)", borderRadius: "50%", position: "absolute", top: 2, left: isPinEnabled ? 22 : 2, transition: "0.3s" }} />
               </div>
             </div>
           </div>
@@ -1428,60 +1470,60 @@ function AccountScreen({ ctx }) {
 
 /* ─── STYLES ────────────────────────────────────────────────────────────────── */
 const S = {
-  shell: { minHeight: "100dvh", background: "#FAF8F4", display: "flex", justifyContent: "center", fontFamily: "'DM Sans','Nunito',sans-serif", padding: 0, margin: 0 },
-  phone: { width: "100%", maxWidth: 600, height: "100dvh", background: "#FAF8F4", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", shadow: "none", borderRadius: 0 },
-  statusBar: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 28px 4px", fontSize: 12, color: "#5C3D2E", fontWeight: 600, flexShrink: 0 },
+  shell: { minHeight: "100dvh", background: "var(--bg-primary)", display: "flex", justifyContent: "center", fontFamily: "'DM Sans','Nunito',sans-serif", padding: 0, margin: 0 },
+  phone: { width: "100%", maxWidth: 600, height: "100dvh", background: "var(--bg-primary)", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", shadow: "none", borderRadius: 0 },
+  statusBar: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 28px 4px", fontSize: 12, color: "var(--text-secondary)", fontWeight: 600, flexShrink: 0 },
   statusTime: { letterSpacing: 1 },
   statusIcons: { fontSize: 10, opacity: 0.7 },
   screenWrap: { flex: 1, overflow: "hidden", position: "relative" },
   screen: { position: "absolute", inset: 0, overflowY: "auto", paddingBottom: 80, scrollbarWidth: "none" },
 
   homeHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "16px 24px 8px" },
-  greeting: { fontSize: 13, color: "#9B7B5E", margin: 0, fontWeight: 500, letterSpacing: 0.3 },
-  userName: { fontSize: 26, color: "#2C1810", margin: "2px 0 0", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: -0.5 },
-  userNameInput: { fontSize: 26, color: "#2C1810", margin: "2px 0 0", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: -0.5, border: "none", background: "transparent", padding: 0, outline: "none", width: "100%", maxWidth: 280 },
-  avatar: { width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#C17F5A,#8B6914)", color: "#FAF8F4", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 18, boxShadow: "0 4px 16px rgba(193,127,90,0.4)", flexShrink: 0 },
-  settingsInput: { width: "100%", border: "1px solid #E2D9CF", borderRadius: 12, padding: "10px 12px", fontSize: 14, color: "#2C1810", background: "#FFF", outline: "none", marginTop: 4 },
+  greeting: { fontSize: 13, color: "var(--text-secondary)", margin: 0, fontWeight: 500, letterSpacing: 0.3 },
+  userName: { fontSize: 26, color: "var(--text-primary)", margin: "2px 0 0", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: -0.5 },
+  userNameInput: { fontSize: 26, color: "var(--text-primary)", margin: "2px 0 0", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif", letterSpacing: -0.5, border: "none", background: "transparent", padding: 0, outline: "none", width: "100%", maxWidth: 280 },
+  avatar: { width: 44, height: 44, borderRadius: "50%", background: "linear-gradient(135deg,#C17F5A,#8B6914)", color: "var(--bg-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 18, boxShadow: "0 4px 16px rgba(193,127,90,0.4)", flexShrink: 0 },
+  settingsInput: { width: "100%", border: "1px solid var(--border-color)", borderRadius: 12, padding: "10px 12px", fontSize: 14, color: "var(--text-primary)", background: "var(--card-bg)", outline: "none", marginTop: 4 },
 
   summaryCard: { margin: "8px 24px 16px", background: "linear-gradient(135deg,#2C1810,#5C3D2E)", borderRadius: 24, padding: "22px", position: "relative", overflow: "hidden", boxShadow: "0 12px 40px rgba(44,24,16,0.35)" },
   summaryOrb: { position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)" },
   summaryLabel: { fontSize: 12, color: "rgba(255,255,255,0.85)", margin: "0 0 6px", letterSpacing: 0.8, textTransform: "uppercase", fontWeight: 600 },
-  summaryAmount: { fontSize: 28, color: "#FAF8F4", margin: "0 0 18px", fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, letterSpacing: -1 },
+  summaryAmount: { fontSize: 28, color: "var(--bg-primary)", margin: "0 0 18px", fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, letterSpacing: -1 },
   summaryRow: { display: "flex", alignItems: "center", gap: 16 },
   summaryDivider: { width: 1, height: 28, background: "rgba(255,255,255,0.2)" },
   summarySubLabel: { fontSize: 11, color: "rgba(255,255,255,0.8)", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 },
-  summarySubVal: { fontSize: 16, color: "#FAF8F4", margin: 0, fontWeight: 700 },
+  summarySubVal: { fontSize: 16, color: "var(--bg-primary)", margin: 0, fontWeight: 700 },
 
   alertBanner: { margin: "0 24px 14px", background: "#FFF8E1", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 10, border: "1px solid #F0C040" },
   alertIcon: { fontSize: 18, flexShrink: 0 },
   alertTitle: { fontSize: 13, fontWeight: 700, color: "#8B6914", margin: "0 0 3px" },
-  alertSub: { fontSize: 12, color: "#9B7B5E", margin: 0 },
+  alertSub: { fontSize: 12, color: "var(--text-secondary)", margin: 0 },
 
   sectionRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 24px 12px" },
-  sectionLabel: { fontSize: 15, fontWeight: 700, color: "#2C1810", margin: 0, fontFamily: "'Playfair Display',Georgia,serif" },
-  textBtn: { fontSize: 13, color: "#C17F5A", fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0 },
+  sectionLabel: { fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0, fontFamily: "'Playfair Display',Georgia,serif" },
+  textBtn: { fontSize: 13, color: "var(--accent-color)", fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0 },
 
   cardList: { display: "flex", flexDirection: "column", gap: 10, padding: "0 24px" },
-  bizCard: { background: "#FFFFFF", borderRadius: 18, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderLeft: "4px solid", boxShadow: "0 2px 16px rgba(44,24,16,0.08)", cursor: "pointer" },
+  bizCard: { background: "var(--card-bg)", borderRadius: 18, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderLeft: "4px solid", boxShadow: "0 2px 16px rgba(44,24,16,0.08)", cursor: "pointer" },
   bizCardLeft: { display: "flex", alignItems: "center", gap: 10 },
   bizEmoji: { width: 44, height: 44, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 },
-  bizName: { fontSize: 14, fontWeight: 700, color: "#2C1810", margin: "0 0 3px" },
-  bizCat: { fontSize: 12, color: "#9B7B5E", margin: 0, fontWeight: 500 },
+  bizName: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 3px" },
+  bizCat: { fontSize: 12, color: "var(--text-secondary)", margin: 0, fontWeight: 500 },
   bizCardRight: { alignItems: "flex-end", display: "flex", flexDirection: "column", gap: 6 },
-  bizProfit: { fontSize: 14, fontWeight: 800, color: "#2C1810", margin: 0 },
+  bizProfit: { fontSize: 14, fontWeight: 800, color: "var(--text-primary)", margin: 0 },
   badge: { fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20 },
 
   emptyState: { padding: "40px 0", textAlign: "center" },
   emptyIcon: { fontSize: 40, margin: "0 0 12px" },
-  emptyTitle: { fontSize: 16, fontWeight: 700, color: "#2C1810", margin: "0 0 6px" },
-  emptySub: { fontSize: 13, color: "#9B7B5E", margin: 0 },
+  emptyTitle: { fontSize: 16, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px" },
+  emptySub: { fontSize: 13, color: "var(--text-secondary)", margin: 0 },
 
   // BIZ SCREEN
   bizHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px 10px", flexShrink: 0 },
-  backBtn: { fontSize: 22, background: "none", border: "none", cursor: "pointer", color: "#2C1810", padding: 0, fontWeight: 700 },
+  backBtn: { fontSize: 22, background: "none", border: "none", cursor: "pointer", color: "var(--text-primary)", padding: 0, fontWeight: 700 },
   iconBtn: { fontSize: 18, background: "none", border: "none", cursor: "pointer", padding: 0 },
   bizHeaderCenter: { display: "flex", alignItems: "center", gap: 8 },
-  bizHeaderName: { fontSize: 15, fontWeight: 700, color: "#2C1810", fontFamily: "'Playfair Display',Georgia,serif" },
+  bizHeaderName: { fontSize: 15, fontWeight: 700, color: "var(--text-primary)", fontFamily: "'Playfair Display',Georgia,serif" },
 
   bizHero: { margin: "0 24px 16px", borderRadius: 24, padding: "20px", position: "relative", overflow: "hidden" },
   heroOrb: { position: "absolute", top: -30, right: -30, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.12)" },
@@ -1493,80 +1535,80 @@ const S = {
   heroSub: { fontSize: 11, color: "rgba(255,255,255,0.6)", margin: 0, fontWeight: 500 },
 
   tabs: { display: "flex", padding: "0 24px", gap: 8, marginBottom: 14, flexShrink: 0 },
-  tab: { flex: 1, padding: "9px 0", borderRadius: 12, border: "none", background: "rgba(44,24,16,0.07)", color: "#9B7B5E", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
-  tabActive: { background: "#2C1810", color: "#FAF8F4" },
+  tab: { flex: 1, padding: "9px 0", borderRadius: 12, border: "none", background: "rgba(44,24,16,0.07)", color: "var(--text-secondary)", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
+  tabActive: { background: "#2C1810", color: "var(--bg-primary)" },
   tabContent: { flex: 1 },
   tabInner: { padding: "0 24px", display: "flex", flexDirection: "column", gap: 12 },
 
-  infoCard: { background: "#FFFFFF", borderRadius: 16, padding: "14px 16px", borderLeft: "4px solid #8B6914", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
-  infoLabel: { fontSize: 11, color: "#9B7B5E", margin: "0 0 5px", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 },
-  infoVal: { fontSize: 17, color: "#2C1810", margin: "0 0 4px", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif" },
-  infoSub: { fontSize: 12, color: "#9B7B5E", margin: "2px 0 0", fontWeight: 500 },
+  infoCard: { background: "var(--card-bg)", borderRadius: 16, padding: "14px 16px", borderLeft: "4px solid #8B6914", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
+  infoLabel: { fontSize: 11, color: "var(--text-secondary)", margin: "0 0 5px", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 },
+  infoVal: { fontSize: 17, color: "var(--text-primary)", margin: "0 0 4px", fontWeight: 800, fontFamily: "'Playfair Display',Georgia,serif" },
+  infoSub: { fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0", fontWeight: 500 },
 
   statsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  statCard: { background: "#FFFFFF", borderRadius: 16, padding: "14px", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
-  statLbl: { fontSize: 11, color: "#9B7B5E", margin: "0 0 6px", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 },
-  statVal: { fontSize: 20, fontWeight: 800, color: "#2C1810", margin: 0 },
+  statCard: { background: "var(--card-bg)", borderRadius: 16, padding: "14px", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
+  statLbl: { fontSize: 11, color: "var(--text-secondary)", margin: "0 0 6px", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 },
+  statVal: { fontSize: 20, fontWeight: 800, color: "var(--text-primary)", margin: 0 },
 
-  dashedBtn: { background: "none", border: "2px dashed #D4B896", borderRadius: 14, padding: "13px", textAlign: "center", color: "#C17F5A", fontWeight: 700, fontSize: 14, cursor: "pointer", width: "100%", fontFamily: "'DM Sans',sans-serif" },
+  dashedBtn: { background: "none", border: "2px dashed #D4B896", borderRadius: 14, padding: "13px", textAlign: "center", color: "var(--accent-color)", fontWeight: 700, fontSize: 14, cursor: "pointer", width: "100%", fontFamily: "'DM Sans',sans-serif" },
 
-  invRow: { background: "#FFFFFF", borderRadius: 16, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
+  invRow: { background: "var(--card-bg)", borderRadius: 16, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
   invNameRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 5 },
-  invName: { fontSize: 14, fontWeight: 700, color: "#2C1810", margin: 0 },
-  invSub: { fontSize: 12, color: "#9B7B5E", margin: "2px 0 0", fontWeight: 500 },
+  invName: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: 0 },
+  invSub: { fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0", fontWeight: 500 },
   invProfit: { fontSize: 14, fontWeight: 800, color: "#3A7D2C", margin: 0 },
   lowBadge: { fontSize: 10, fontWeight: 700, background: "#FDECEA", color: "#C0392B", padding: "2px 7px", borderRadius: 99 },
   marginBadge: { fontSize: 11, color: "#3A7D2C", fontWeight: 600, background: "#E8F5E3", padding: "2px 8px", borderRadius: 99 },
   deleteBtn: { fontSize: 12, color: "#C0392B", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", fontWeight: 700 },
 
-  saleRow: { background: "#FFFFFF", borderRadius: 16, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
-  saleName: { fontSize: 14, fontWeight: 700, color: "#2C1810", margin: "0 0 4px" },
-  saleSub: { fontSize: 12, color: "#9B7B5E", margin: 0, fontWeight: 500 },
-  saleRev: { fontSize: 14, fontWeight: 800, color: "#2C1810", margin: "0 0 3px" },
+  saleRow: { background: "var(--card-bg)", borderRadius: 16, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
+  saleName: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 4px" },
+  saleSub: { fontSize: 12, color: "var(--text-secondary)", margin: 0, fontWeight: 500 },
+  saleRev: { fontSize: 14, fontWeight: 800, color: "var(--text-primary)", margin: "0 0 3px" },
   salePft: { fontSize: 12, color: "#3A7D2C", fontWeight: 600 },
   restockBtn: { background: "#F5F0EA", color: "#8B6914", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 8 },
 
   // ANALYTICS
-  analyticsRow: { background: "#FFFFFF", borderRadius: 16, padding: "14px 16px", display: "flex", alignItems: "center", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
+  analyticsRow: { background: "var(--card-bg)", borderRadius: 16, padding: "14px 16px", display: "flex", alignItems: "center", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
   analyticsLeft: { display: "flex", alignItems: "center", gap: 8, width: 130 },
-  rankNum: { fontSize: 13, fontWeight: 800, color: "#9B7B5E", width: 24 },
-  analyticsProfit: { fontSize: 13, fontWeight: 800, color: "#2C1810", margin: 0, whiteSpace: "nowrap" },
-  barBg: { height: 8, background: "#F0EBE3", borderRadius: 99, overflow: "hidden" },
+  rankNum: { fontSize: 13, fontWeight: 800, color: "var(--text-secondary)", width: 24 },
+  analyticsProfit: { fontSize: 13, fontWeight: 800, color: "var(--text-primary)", margin: 0, whiteSpace: "nowrap" },
+  barBg: { height: 8, background: "var(--border-color)", borderRadius: 99, overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 99, transition: "width 0.8s ease" },
 
   // SETTINGS
   pageHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px 16px" },
-  pageTitle: { fontSize: 18, fontWeight: 800, color: "#2C1810", margin: 0, fontFamily: "'Playfair Display',Georgia,serif" },
+  pageTitle: { fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: 0, fontFamily: "'Playfair Display',Georgia,serif" },
 
   settingsSection: { marginBottom: 4 },
-  settingsSectionTitle: { fontSize: 12, fontWeight: 700, color: "#9B7B5E", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px", paddingLeft: 2 },
-  settingsCard: { background: "#FFFFFF", borderRadius: 18, overflow: "hidden", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
+  settingsSectionTitle: { fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px", paddingLeft: 2 },
+  settingsCard: { background: "var(--card-bg)", borderRadius: 18, overflow: "hidden", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
   settingsRow: { display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", cursor: "pointer" },
   settingsIcon: { fontSize: 20, width: 32, textAlign: "center" },
-  settingsRowLabel: { fontSize: 14, fontWeight: 600, color: "#2C1810", margin: "0 0 2px" },
-  settingsRowVal: { fontSize: 13, color: "#9B7B5E", margin: 0, fontWeight: 500 },
-  settingsRowSub: { fontSize: 12, color: "#9B7B5E", margin: 0 },
-  settingsDivider: { height: 1, background: "#F0EBE3", margin: "0 16px" },
-  chevron: { fontSize: 20, color: "#9B7B5E", fontWeight: 300 },
-  select: { fontSize: 13, fontWeight: 600, color: "#2C1810", background: "#F5F0EA", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
+  settingsRowLabel: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)", margin: "0 0 2px" },
+  settingsRowVal: { fontSize: 13, color: "var(--text-secondary)", margin: 0, fontWeight: 500 },
+  settingsRowSub: { fontSize: 12, color: "var(--text-secondary)", margin: 0 },
+  settingsDivider: { height: 1, background: "var(--border-color)", margin: "0 16px" },
+  chevron: { fontSize: 20, color: "var(--text-secondary)", fontWeight: 300 },
+  select: { fontSize: 13, fontWeight: 600, color: "var(--text-primary)", background: "#F5F0EA", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
 
-  feedbackCard: { background: "#FFFFFF", borderRadius: 18, padding: "20px", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
-  feedbackTitle: { fontSize: 16, fontWeight: 700, color: "#2C1810", margin: "0 0 4px", fontFamily: "'Playfair Display',Georgia,serif" },
-  feedbackSub: { fontSize: 13, color: "#9B7B5E", margin: "0 0 16px" },
+  feedbackCard: { background: "var(--card-bg)", borderRadius: 18, padding: "20px", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
+  feedbackTitle: { fontSize: 16, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 4px", fontFamily: "'Playfair Display',Georgia,serif" },
+  feedbackSub: { fontSize: 13, color: "var(--text-secondary)", margin: "0 0 16px" },
   emojiRow: { display: "flex", justifyContent: "space-between", marginBottom: 16 },
   emojiBtn: { fontSize: 28, background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: 12 },
-  feedbackInput: { width: "100%", minHeight: 80, borderRadius: 12, border: "1.5px solid #E0D6C8", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: "#2C1810", background: "#FAF8F4", resize: "none", boxSizing: "border-box", marginBottom: 12, outline: "none" },
-  submitBtn: { width: "100%", background: "#2C1810", color: "#FAF8F4", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
+  feedbackInput: { width: "100%", minHeight: 80, borderRadius: 12, border: "1.5px solid var(--border-color)", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: "var(--text-primary)", background: "var(--bg-primary)", resize: "none", boxSizing: "border-box", marginBottom: 12, outline: "none" },
+  submitBtn: { width: "100%", background: "#2C1810", color: "var(--bg-primary)", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
 
   // MODALS
-  modalOverlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", zIndex: 100 },
-  modalSheet: { background: "#FAF8F4", borderRadius: "24px 24px 0 0", width: "100%", maxHeight: "90%", overflowY: "auto", paddingBottom: 40 },
+  modalOverlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end", zIndex: 100 },
+  modalSheet: { background: "var(--bg-primary)", borderRadius: "24px 24px 0 0", width: "100%", maxHeight: "90%", overflowY: "auto", paddingBottom: 40 },
   modalHandle: { width: 40, height: 4, background: "#D4B896", borderRadius: 99, margin: "14px auto 4px" },
-  modalTitle: { fontSize: 18, fontWeight: 800, color: "#2C1810", margin: "8px 24px 16px", fontFamily: "'Playfair Display',Georgia,serif" },
+  modalTitle: { fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: "8px 24px 16px", fontFamily: "'Playfair Display',Georgia,serif" },
   modalBody: { padding: "0 24px", display: "flex", flexDirection: "column", gap: 12 },
 
-  fieldLabel: { fontSize: 13, fontWeight: 700, color: "#5C3D2E", margin: "4px 0 4px", letterSpacing: 0.2 },
-  input: { width: "100%", height: 48, borderRadius: 14, border: "1.5px solid #E0D6C8", padding: "0 14px", fontSize: 14, fontFamily: "'DM Sans',sans-serif", color: "#2C1810", background: "#FFFFFF", boxSizing: "border-box", outline: "none", appearance: "auto" },
+  fieldLabel: { fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", margin: "4px 0 4px", letterSpacing: 0.2 },
+  input: { width: "100%", height: 48, borderRadius: 14, border: "1.5px solid var(--border-color)", padding: "0 14px", fontSize: 14, fontFamily: "'DM Sans',sans-serif", color: "var(--text-primary)", background: "var(--card-bg)", boxSizing: "border-box", outline: "none", appearance: "auto" },
 
   colorRow: { display: "flex", gap: 14, flexWrap: "wrap" },
   colorDot: { width: 44, height: 44, borderRadius: "50%", border: "none", cursor: "pointer", outlineOffset: 3 },
@@ -1574,10 +1616,10 @@ const S = {
   emojiPick: { fontSize: 24, border: "none", cursor: "pointer", padding: "6px", borderRadius: 10, width: 44, height: 44 },
 
   calcPreview: { background: "#F0FAF0", borderRadius: 14, padding: "12px 16px", border: "1.5px solid #B8E0B0" },
-  calcLabel: { fontSize: 13, color: "#2C1810", margin: "2px 0", fontWeight: 500 },
+  calcLabel: { fontSize: 13, color: "var(--text-primary)", margin: "2px 0", fontWeight: 500 },
 
-  primaryBtn: { width: "100%", background: "#2C1810", color: "#FAF8F4", border: "none", borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", marginTop: 4 },
-  ghostBtn: { width: "100%", background: "transparent", color: "#9B7B5E", border: "1.5px solid #D4B896", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
+  primaryBtn: { width: "100%", background: "#2C1810", color: "var(--bg-primary)", border: "none", borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", marginTop: 4 },
+  ghostBtn: { width: "100%", background: "transparent", color: "var(--text-secondary)", border: "1.5px solid #D4B896", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
 
   deleteWarning: { background: "#FDECEA", borderRadius: 16, padding: "20px", textAlign: "center" },
   deleteIcon: { fontSize: 36, margin: "0 0 10px" },
@@ -1585,12 +1627,12 @@ const S = {
   deleteSub: { fontSize: 13, color: "#7B3B35", margin: 0, lineHeight: 1.5 },
 
   // BOTTOM NAV
-  bottomNav: { position: "absolute", bottom: 0, left: 0, right: 0, height: 78, background: "#FFFFFF", borderTop: "1px solid rgba(44,24,16,0.08)", display: "flex", alignItems: "center", justifyContent: "space-around", padding: "0 8px 8px", boxShadow: "0 -8px 32px rgba(44,24,16,0.08)" },
+  bottomNav: { position: "absolute", bottom: 0, left: 0, right: 0, height: 78, background: "var(--card-bg)", borderTop: "1px solid var(--border-color)", display: "flex", alignItems: "center", justifyContent: "space-around", padding: "0 8px 8px", boxShadow: "0 -8px 32px rgba(44,24,16,0.08)" },
   navItem: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: 16 },
   navActive: { background: "rgba(193,127,90,0.12)" },
-  navLabel: { fontSize: 10, color: "#9B7B5E", fontWeight: 600, letterSpacing: 0.3 },
-  addNavIcon: { color: "#C17F5A", fontWeight: 900 },
+  navLabel: { fontSize: 10, color: "var(--text-secondary)", fontWeight: 600, letterSpacing: 0.3 },
+  addNavIcon: { color: "var(--accent-color)", fontWeight: 900 },
 
-  toast: { position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)", background: "#2C1810", color: "#FAF8F4", padding: "12px 24px", borderRadius: 99, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", zIndex: 200 },
-  numKey: { width: 64, height: 64, borderRadius: "50%", border: "1.5px solid #E0D6C8", background: "#FFF", fontSize: 24, fontWeight: 700, color: "#2C1810", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none" },
+  toast: { position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)", background: "#2C1810", color: "var(--bg-primary)", padding: "12px 24px", borderRadius: 99, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", zIndex: 200 },
+  numKey: { width: 64, height: 64, borderRadius: "50%", border: "1.5px solid var(--border-color)", background: "var(--card-bg)", fontSize: 24, fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none" },
 };

@@ -14,6 +14,7 @@ export const useStore = create(
       hasSeenGuide: false,
       pin: null,
       isPinEnabled: false,
+      isDarkMode: false,
       joinDate: new Date().toISOString(),
       userEmail: '',
       userAvatar: '/avatars/avatar1.png',
@@ -27,7 +28,8 @@ export const useStore = create(
       setOnboardingComplete: (onboardingComplete) => set({ onboardingComplete }),
       setHasSeenGuide: (hasSeenGuide) => set({ hasSeenGuide }),
       setPin: (pin) => set({ pin }),
-      setIsPinEnabled: (isPinEnabled) => set({ isPinEnabled })
+      setIsPinEnabled: (isPinEnabled) => set({ isPinEnabled }),
+      setIsDarkMode: (isDarkMode) => set({ isDarkMode })
     }),
     {
       name: 'biztrack-storage-v3', // bumping version to replace old structure
