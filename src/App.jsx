@@ -1238,7 +1238,7 @@ function FeatureGuide({ ctx }) {
 
 /* ─── ACCOUNT SCREEN ───────────────────────────────────────────────────────── */
 function AccountScreen({ ctx }) {
-  const { setScreen, userName, setUserName, businesses, userEmail, setUserEmail, showToast } = ctx;
+  const { setScreen, userName, setUserName, businesses, userEmail, setUserEmail, showToast, userAvatar, setUserAvatar, isPinEnabled } = ctx;
   const joinDate = useStore(s => s.joinDate);
   const formattedDate = new Date(joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
@@ -1281,6 +1281,32 @@ function AccountScreen({ ctx }) {
           </div>
         </div>
 
+        
+        {/* AVATAR PICKER */}
+        <div style={S.settingsSection}>
+          <p style={S.settingsSectionTitle}>Choose Avatar</p>
+          <div style={{ display: "flex", gap: 12, overflowX: "auto", padding: "4px 0 12px", scrollbarWidth: "none" }}>
+            {["👤", "🦁", "🦊", "🦉", "💎", "🚀", "👑", "🎯", "💼", "🔥", "⚡️", "🌈"].map(a => (
+              <button 
+                key={a}
+                onClick={() => setUserAvatar(a)}
+                style={{ 
+                  ...S.avatar, 
+                  width: 54, 
+                  height: 54, 
+                  fontSize: 24, 
+                  flexShrink: 0,
+                  border: userAvatar === a ? "3px solid #C17F5A" : "3px solid transparent",
+                  background: userAvatar === a ? "#FFF" : "linear-gradient(135deg,#FAF8F4,#E0D6C8)",
+                  transition: "0.2s"
+                }}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* INFO SECTION */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Personal Details</p>
@@ -1317,7 +1343,7 @@ function AccountScreen({ ctx }) {
           <p style={S.settingsSectionTitle}>Security</p>
           <div style={S.settingsCard}>
             <div style={S.settingsRow} onClick={() => {
-              if (ctx.isPinEnabled) {
+              if (isPinEnabled) {
                 useStore.getState().setIsPinEnabled(false);
                 useStore.getState().setPin(null);
                 showToast("PIN disabled");
@@ -1335,10 +1361,10 @@ function AccountScreen({ ctx }) {
               <Lock size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Passcode Lock</p>
-                <p style={S.settingsRowSub}>{ctx.isPinEnabled ? "Enabled — Tap to disable" : "Disabled — Tap to enable"}</p>
+                <p style={S.settingsRowSub}>{isPinEnabled ? "Enabled — Tap to disable" : "Disabled — Tap to enable"}</p>
               </div>
-              <div style={{ width: 40, height: 20, background: ctx.isPinEnabled ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
-                <div style={{ width: 16, height: 16, background: "#FFF", borderRadius: "50%", position: "absolute", top: 2, left: ctx.isPinEnabled ? 22 : 2, transition: "0.3s" }} />
+              <div style={{ width: 40, height: 20, background: isPinEnabled ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
+                <div style={{ width: 16, height: 16, background: "#FFF", borderRadius: "50%", position: "absolute", top: 2, left: isPinEnabled ? 22 : 2, transition: "0.3s" }} />
               </div>
             </div>
           </div>
