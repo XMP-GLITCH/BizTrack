@@ -224,6 +224,11 @@ export default function BizTrack() {
 
   const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin };
 
+    const [isUnlocked, setIsUnlocked] = useState(false);
+
+  if (!onboardingComplete) return <Onboarding ctx={ctx} />;
+  if (isPinEnabled && !isUnlocked) return <PinLock ctx={ctx} onUnlock={() => setIsUnlocked(true)} />;
+
   return (
     <div style={S.shell}>
       <div style={S.phone}>
