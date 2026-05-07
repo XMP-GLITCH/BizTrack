@@ -1359,17 +1359,29 @@ function AccountScreen({ ctx }) {
           </div>
         </div>
 
+        
         <button 
-          style={{ ...S.ghostBtn, color: "#C0392B", borderColor: "#FDECEA", marginTop: 24, borderStyle: "dashed" }}
+          style={{ ...S.primaryBtn, marginTop: 24 }}
           onClick={() => {
-            if (confirm("🚨 WARNING: This will permanently delete all businesses, sales, and inventory data on this device. Continue?")) {
+            ctx.setOnboardingComplete(false);
+            showToast("Signed out successfully");
+          }}
+        >
+          Sign Out
+        </button>
+
+        <button 
+          style={{ ...S.ghostBtn, color: "#C0392B", borderColor: "#FDECEA", marginTop: 12, borderStyle: "dashed" }}
+          onClick={() => {
+            if (confirm("🚨 FACTORY RESET: This will permanently delete all businesses, sales, and inventory data. This cannot be undone. Continue?")) {
               localStorage.clear();
               window.location.reload();
             }
           }}
         >
-          Sign Out & Clear All Data
+          Wipe All Data & Reset App
         </button>
+
         
         <div style={{ height: 40 }} />
       </div>
