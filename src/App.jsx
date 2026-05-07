@@ -46,8 +46,7 @@ const dateLabel = (d) => {
   if (d === yesterday) return "Yesterday";
   return d;
 };
-let nextId = 100;
-const uid = () => ++nextId;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
 /* ─── ROOT ─────────────────────────────────────────────────────────────────── */
 
@@ -1119,14 +1118,16 @@ function BottomNav({ ctx }) {
 function Onboarding({ ctx }) {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const { setUserName, setUserEmail, setOnboardingComplete, addBusiness } = ctx;
+
 
   const next = () => {
     if (step === 1 && name.trim()) {
       setUserName(name.trim());
     }
-    if (step === 2) {
-      if (email.trim()) setUserEmail(email.trim());
+    if (step === 2 && email.trim()) {
+      setUserEmail(email.trim());
     }
     if (step === 3) {
       setOnboardingComplete(true);
@@ -1164,6 +1165,21 @@ function Onboarding({ ctx }) {
             <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 24, opacity: name.trim() ? 1 : 0.5 }} disabled={!name.trim()} onClick={next}>Continue</button>
           </div>
         )}
+        {step === 2 && (
+          <div style={{ animation: "fadeIn 0.5s ease" }}>
+            <h2 style={{ ...S.sectionLabel, color: "var(--bg-primary)", fontSize: 24, marginBottom: 12 }}>Your Email?</h2>
+            <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 24 }}>Optional: To help you manage your business data.</p>
+            <input 
+              style={{ ...S.input, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "var(--bg-primary)", textAlign: "center", fontSize: 18 }}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="hello@example.com"
+              type="email"
+              autoFocus
+            />
+            <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 24 }} onClick={next}>Continue</button>
+          </div>
+        )}
         {step === 3 && (
           <div style={{ animation: "fadeIn 0.5s ease" }}>
             <h2 style={{ ...S.sectionLabel, color: "var(--bg-primary)", fontSize: 24, marginBottom: 12 }}>All set, {name}!</h2>
@@ -1186,7 +1202,7 @@ function Onboarding({ ctx }) {
 /* ─── SECURITY ─────────────────────────────────────────────────────────────── */
 function PinLock({ ctx, onUnlock }) {
   const [input, setInput] = useState("");
-  const { pin, userName } = ctx;
+  const { pin, userName, userAvatar } = ctx;
 
   const press = (n) => {
     if (input.length < 4) {
