@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight } from "lucide-react";
+import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X } from "lucide-react";
 import { useStore } from "./store/useStore";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
@@ -192,6 +192,7 @@ export default function BizTrack() {
           {screen === "settings" && <SettingsScreen ctx={ctx} />}
           {screen === "analytics" && <AnalyticsScreen ctx={ctx} />}
         </div>
+        <InstallPrompt />
         <BottomNav ctx={ctx} />
 
         {/* MODALS */}
@@ -302,7 +303,7 @@ function HomeScreen({ ctx }) {
 
 /* ─── BUSINESS SCREEN ───────────────────────────────────────────────────────── */
 function BusinessScreen({ ctx }) {
-  const { activeBiz, bizTab, setBizTab, setScreen, setModal, deleteInventoryItem, lowStockThreshold } = ctx;
+  const { activeBiz, bizTab, setBizTab, setScreen, setModal, deleteInventoryItem, lowStockThreshold, setRestockItemId } = ctx;
   const stats = calcBizStats(activeBiz);
 
   return (
@@ -504,6 +505,12 @@ function AnalyticsScreen({ ctx }) {
   const totalPft = sorted.reduce((s, b) => s + b.stats.profit, 0);
   const maxProfit = Math.max(...sorted.map((b) => b.stats.profit), 1);
 
+  const chartData = sorted.map((b) => ({
+    name: b.name.split(" ")[0],
+    profit: b.stats.profit,
+    color: b.color
+  }));
+
   return (
     <div style={S.screen}>
       <div style={S.pageHeader}>
@@ -529,6 +536,28 @@ function AnalyticsScreen({ ctx }) {
               <p style={S.summarySubVal}>{totalRev > 0 ? ((totalPft / totalRev) * 100).toFixed(0) : 0}%</p>
             </div>
           </div>
+        </div>
+
+        {/* CHART */}
+        <p style={S.sectionLabel}>Profit Overview</p>
+        <div style={{ ...S.infoCard, height: 200, padding: "20px 10px 10px -10px", marginBottom: 20 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#9B7B5E", fontFamily: "'DM Sans', sans-serif" }} tickLine={false} axisLine={false} />
+              <YAxis tickFormatter={(val) => val >= 1000 ? (val / 1000) + 'k' : val} tick={{ fontSize: 10, fill: "#9B7B5E", fontFamily: "'DM Sans', sans-serif" }} tickLine={false} axisLine={false} width={40} />
+              <Tooltip 
+                cursor={{ fill: "rgba(44,24,16,0.04)" }} 
+                contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 16px rgba(44,24,16,0.1)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: "#2C1810" }} 
+                itemStyle={{ color: "#2C1810" }} 
+                formatter={(value) => [fmt(value), "Profit"]} 
+              />
+              <Bar dataKey="profit" radius={[8, 8, 0, 0]}>
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
 
         {/* PROFIT RANKING */}
@@ -973,7 +1002,7 @@ function BottomNav({ ctx }) {
   const tabs = [
     { id: "home", icon: <Home size={22} />, label: "Home" },
     { id: "analytics", icon: <BarChart2 size={22} />, label: "Analytics" },
-    { id: "add", icon: <PlusCircle size={28} />, label: "Add", action: () => setModal("addBiz") },
+    
     { id: "settings", icon: <Settings size={22} />, label: "Settings" },
   ];
   return (
@@ -1090,6 +1119,7 @@ const S = {
   saleSub: { fontSize: 12, color: "#9B7B5E", margin: 0, fontWeight: 500 },
   saleRev: { fontSize: 14, fontWeight: 800, color: "#2C1810", margin: "0 0 3px" },
   salePft: { fontSize: 12, color: "#3A7D2C", fontWeight: 600 },
+  restockBtn: { background: "#F5F0EA", color: "#8B6914", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 8 },
 
   // ANALYTICS
   analyticsRow: { background: "#FFFFFF", borderRadius: 16, padding: "14px 16px", display: "flex", alignItems: "center", boxShadow: "0 2px 12px rgba(44,24,16,0.06)" },
