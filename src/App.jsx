@@ -270,7 +270,7 @@ function HomeScreen({ ctx }) {
           <p style={S.greeting}>Good morning, {userName}</p>
           <h1 style={S.userName}>Your Businesses ✨</h1>
         </div>
-        <div style={S.avatar}>{(userName || "B").trim().charAt(0).toUpperCase() || "B"}</div>
+        <div style={{ ...S.avatar, cursor: "pointer" }} onClick={() => setScreen("account")}>{(userName || "B").trim().charAt(0).toUpperCase() || "B"}</div>
       </div>
 
       {/* SUMMARY CARD */}
