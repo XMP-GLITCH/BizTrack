@@ -235,6 +235,7 @@ export default function BizTrack() {
           {screen === "business" && activeBiz && <BusinessScreen ctx={ctx} />}
           {screen === "settings" && <SettingsScreen ctx={ctx} />}
           {screen === "analytics" && <AnalyticsScreen ctx={ctx} />}
+          {screen === "account" && <AccountScreen ctx={ctx} />}
         </div>
         <InstallPrompt deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />
         <BottomNav ctx={ctx} />
@@ -1256,6 +1257,89 @@ function FeatureGuide({ ctx }) {
       <style>{`
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
+    </div>
+  );
+}
+
+
+/* ─── ACCOUNT SCREEN ───────────────────────────────────────────────────────── */
+function AccountScreen({ ctx }) {
+  const { setScreen, userName, setUserName, businesses, showToast } = ctx;
+  const joinDate = useStore(s => s.joinDate);
+  const formattedDate = new Date(joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  
+  const totalRevenue = businesses.reduce((acc, b) => acc + b.sales.reduce((s, sale) => s + sale.revenue, 0), 0);
+  const totalProfit = businesses.reduce((acc, b) => acc + b.sales.reduce((s, sale) => s + (sale.revenue - sale.cost), 0), 0);
+  
+  return (
+    <div style={S.screen}>
+      <div style={S.pageHeader}>
+        <button style={S.backBtn} onClick={() => setScreen("home")}>←</button>
+        <h2 style={S.pageTitle}>My Account</h2>
+        <div style={{ width: 32 }} />
+      </div>
+
+      <div style={{ padding: "0 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* PROFILE CARD */}
+        <div style={{ ...S.summaryCard, margin: 0, background: "linear-gradient(135deg,#FAF8F4,#E0D6C8)", border: "1px solid #D4B896" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28 }}>{userName[0]}</div>
+            <div>
+              <p style={{ ...S.userName, fontSize: 22 }}>{userName}</p>
+              <p style={{ ...S.greeting, color: "#9B7B5E" }}>Member since {formattedDate}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ACCOUNT STATS */}
+        <div style={S.statsGrid}>
+          <div style={S.statCard}>
+            <p style={S.statLbl}>Total Revenue</p>
+            <p style={{ ...S.statVal, color: "#2C1810" }}>{fmt(totalRevenue)}</p>
+          </div>
+          <div style={S.statCard}>
+            <p style={S.statLbl}>Total Profit</p>
+            <p style={{ ...S.statVal, color: "#3A7D2C" }}>{fmt(totalProfit)}</p>
+          </div>
+        </div>
+
+        {/* SETTINGS BITS */}
+        <div style={S.settingsSection}>
+          <p style={S.settingsSectionTitle}>Account Details</p>
+          <div style={S.settingsCard}>
+             <div style={S.settingsRow}>
+               <div style={{ flex: 1 }}>
+                 <p style={S.settingsRowLabel}>Public Name</p>
+                 <input 
+                   style={S.settingsInput} 
+                   value={userName} 
+                   onChange={(e) => setUserName(e.target.value)}
+                 />
+               </div>
+             </div>
+             <div style={S.settingsDivider} />
+             <div style={S.settingsRow}>
+               <div style={{ flex: 1 }}>
+                 <p style={S.settingsRowLabel}>Account Level</p>
+                 <p style={S.settingsRowSub}>Local Storage Business Plan</p>
+               </div>
+               <span style={{ ...S.badge, background: "#E8F5E3", color: "#3A7D2C" }}>PRO</span>
+             </div>
+          </div>
+        </div>
+
+        <button 
+          style={{ ...S.ghostBtn, color: "#C0392B", borderColor: "#FDECEA", marginTop: 20 }}
+          onClick={() => {
+            if (confirm("Are you sure? This will wipe ALL businesses and data permanently.")) {
+              localStorage.clear();
+              window.location.reload();
+            }
+          }}
+        >
+          Sign Out & Clear Data
+        </button>
+      </div>
     </div>
   );
 }
