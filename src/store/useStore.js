@@ -15,11 +15,13 @@ export const useStore = create(
       pin: null,
       isPinEnabled: false,
       joinDate: new Date().toISOString(),
+      userEmail: '',
       
       setBusinesses: (businesses) => set({ businesses }),
       setCurrency: (currency) => set({ currency }),
       setLowStockThreshold: (lowStockThreshold) => set({ lowStockThreshold }),
       setUserName: (userName) => set({ userName }),
+      setUserEmail: (userEmail) => set({ userEmail }),
       setOnboardingComplete: (onboardingComplete) => set({ onboardingComplete }),
       setHasSeenGuide: (hasSeenGuide) => set({ hasSeenGuide }),
       setPin: (pin) => set({ pin }),

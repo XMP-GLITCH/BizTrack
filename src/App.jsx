@@ -220,7 +220,9 @@ export default function BizTrack() {
   const isPinEnabled = useStore(s => s.isPinEnabled);
   const pin = useStore(s => s.pin);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin };
+  const userEmail = useStore(s => s.userEmail);
+  const setUserEmail = useStore(s => s.setUserEmail);
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin, userEmail, setUserEmail };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -825,6 +827,7 @@ function ModalShell({ onClose, title, children }) {
 function AddBizModal({ ctx }) {
   const { setModal, addBusiness } = ctx;
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [category, setCategory] = useState("Crochet");
   const [color, setColor] = useState(COLORS[0]);
   const [emoji, setEmoji] = useState("🧶");
@@ -1105,13 +1108,16 @@ function BottomNav({ ctx }) {
 function Onboarding({ ctx }) {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
-  const { setUserName, setOnboardingComplete, addBusiness } = ctx;
+  const { setUserName, setUserEmail, setOnboardingComplete, addBusiness } = ctx;
 
   const next = () => {
     if (step === 1 && name.trim()) {
       setUserName(name.trim());
     }
     if (step === 2) {
+      if (email.trim()) setUserEmail(email.trim());
+    }
+    if (step === 3) {
       setOnboardingComplete(true);
     } else {
       setStep(step + 1);
@@ -1142,7 +1148,7 @@ function Onboarding({ ctx }) {
             <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 24, opacity: name.trim() ? 1 : 0.5 }} disabled={!name.trim()} onClick={next}>Continue</button>
           </div>
         )}
-        {step === 2 && (
+        {step === 3 && (
           <div style={{ animation: "fadeIn 0.5s ease" }}>
             <h2 style={{ ...S.sectionLabel, color: "#FAF8F4", fontSize: 24, marginBottom: 12 }}>All set, {name}!</h2>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 32 }}>Let's start by adding your first business on the home screen.</p>
@@ -1287,6 +1293,7 @@ function AccountScreen({ ctx }) {
             <div>
               <p style={{ ...S.userName, fontSize: 22 }}>{userName}</p>
               <p style={{ ...S.greeting, color: "#9B7B5E" }}>Member since {formattedDate}</p>
+              <p style={{ ...S.greeting, color: "#9B7B5E", fontSize: 12, marginTop: 4 }}>{useStore.getState().userEmail || "No email linked"}</p>
             </div>
           </div>
         </div>
