@@ -16,7 +16,7 @@ export const useStore = create(
       isPinEnabled: false,
       joinDate: new Date().toISOString(),
       userEmail: '',
-      userAvatar: '👤',
+      userAvatar: '/avatars/avatar1.png',
       
       setBusinesses: (businesses) => set({ businesses }),
       setCurrency: (currency) => set({ currency }),
