@@ -660,25 +660,6 @@ function SettingsScreen({ ctx }) {
       </div>
 
       <div style={S.tabInner}>
-        {/* PROFILE */}
-        <div style={S.settingsSection}>
-          <p style={S.settingsSectionTitle}>Profile</p>
-          <div style={S.settingsCard}>
-            <div style={S.settingsRow}>
-              <div style={{ ...S.avatar, width: 48, height: 48, fontSize: 20 }}>{(userName || "B").trim().charAt(0).toUpperCase() || "B"}</div>
-              <div style={{ flex: 1 }}>
-                <p style={S.settingsRowLabel}>Your Name</p>
-                <input
-                  style={S.settingsInput}
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  placeholder="Business Owner"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* PREFERENCES */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Preferences</p>
@@ -715,38 +696,6 @@ function SettingsScreen({ ctx }) {
         </div>
 
         
-        {/* SECURITY */}
-        <div style={S.settingsSection}>
-          <p style={S.settingsSectionTitle}>Security</p>
-          <div style={S.settingsCard}>
-            <div style={S.settingsRow} onClick={() => {
-              if (ctx.isPinEnabled) {
-                useStore.getState().setIsPinEnabled(false);
-                useStore.getState().setPin(null);
-                showToast("PIN disabled");
-              } else {
-                const newPin = prompt("Enter a 4-digit PIN:");
-                if (newPin && newPin.length === 4 && /\d{4}/.test(newPin)) {
-                  useStore.getState().setPin(newPin);
-                  useStore.getState().setIsPinEnabled(true);
-                  showToast("PIN enabled!");
-                } else if (newPin) {
-                  alert("Invalid PIN. Must be 4 digits.");
-                }
-              }
-            }}>
-              <Lock size={20} color="#9B7B5E" />
-              <div style={{ flex: 1 }}>
-                <p style={S.settingsRowLabel}>Passcode Lock</p>
-                <p style={S.settingsRowSub}>{ctx.isPinEnabled ? "Enabled — Tap to disable" : "Disabled — Tap to enable"}</p>
-              </div>
-              <div style={{ width: 40, height: 20, background: ctx.isPinEnabled ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
-                <div style={{ width: 16, height: 16, background: "#FFF", borderRadius: "50%", position: "absolute", top: 2, left: ctx.isPinEnabled ? 22 : 2, transition: "0.3s" }} />
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* DATA */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Data</p>
@@ -1341,6 +1290,39 @@ function AccountScreen({ ctx }) {
                  />
                </div>
              </div>
+          </div>
+        </div>
+
+        
+        {/* SECURITY */}
+        <div style={S.settingsSection}>
+          <p style={S.settingsSectionTitle}>Security</p>
+          <div style={S.settingsCard}>
+            <div style={S.settingsRow} onClick={() => {
+              if (ctx.isPinEnabled) {
+                useStore.getState().setIsPinEnabled(false);
+                useStore.getState().setPin(null);
+                showToast("PIN disabled");
+              } else {
+                const newPin = prompt("Enter a 4-digit PIN:");
+                if (newPin && newPin.length === 4 && /\d{4}/.test(newPin)) {
+                  useStore.getState().setPin(newPin);
+                  useStore.getState().setIsPinEnabled(true);
+                  showToast("PIN enabled!");
+                } else if (newPin) {
+                  alert("Invalid PIN. Must be 4 digits.");
+                }
+              }
+            }}>
+              <Lock size={20} color="#9B7B5E" />
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Passcode Lock</p>
+                <p style={S.settingsRowSub}>{ctx.isPinEnabled ? "Enabled — Tap to disable" : "Disabled — Tap to enable"}</p>
+              </div>
+              <div style={{ width: 40, height: 20, background: ctx.isPinEnabled ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
+                <div style={{ width: 16, height: 16, background: "#FFF", borderRadius: "50%", position: "absolute", top: 2, left: ctx.isPinEnabled ? 22 : 2, transition: "0.3s" }} />
+              </div>
+            </div>
           </div>
         </div>
 
