@@ -222,7 +222,9 @@ export default function BizTrack() {
 
   const userEmail = useStore(s => s.userEmail);
   const setUserEmail = useStore(s => s.setUserEmail);
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin, userEmail, setUserEmail };
+  const userAvatar = useStore(s => s.userAvatar);
+  const setUserAvatar = useStore(s => s.setUserAvatar);
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin, userEmail, setUserEmail, userAvatar, setUserAvatar };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -666,7 +668,7 @@ function SettingsScreen({ ctx }) {
           <p style={S.settingsSectionTitle}>Account</p>
           <div style={S.settingsCard}>
             <div style={S.settingsRow} onClick={() => setScreen("account")}>
-              <div style={{ ...S.avatar, width: 40, height: 40, fontSize: 16 }}>{userName[0]}</div>
+              <div style={{ ...S.avatar, width: 40, height: 40, fontSize: 16 }}>{userAvatar || userName[0]}</div>
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>{userName}</p>
                 <p style={S.settingsRowSub}>Manage profile, security & data</p>
@@ -1152,7 +1154,7 @@ function PinLock({ ctx, onUnlock }) {
   return (
     <div style={{ ...S.shell, background: "#FAF8F4" }}>
       <div style={{ ...S.phone, padding: 40, alignItems: "center", justifyContent: "center" }}>
-        <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, marginBottom: 16 }}>{userName[0]}</div>
+        <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, marginBottom: 16 }}>{userAvatar || userName[0]}</div>
         <h2 style={{ ...S.userName, marginBottom: 8 }}>Welcome back</h2>
         <p style={{ ...S.greeting, marginBottom: 40 }}>Enter PIN to unlock</p>
         
@@ -1258,7 +1260,7 @@ function AccountScreen({ ctx }) {
         <div style={S.summaryCard}>
           <div style={S.summaryOrb} />
           <div style={{ display: "flex", alignItems: "center", gap: 16, position: "relative", zIndex: 1 }}>
-            <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, boxShadow: "0 8px 24px rgba(0,0,0,0.2)" }}>{userName[0]}</div>
+            <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, boxShadow: "0 8px 24px rgba(0,0,0,0.2)" }}>{userAvatar || userName[0]}</div>
             <div>
               <p style={{ ...S.summaryLabel, margin: 0, opacity: 0.8 }}>Owner Profile</p>
               <h2 style={{ ...S.userName, color: "#FAF8F4", fontSize: 24, marginTop: 4 }}>{userName}</h2>
