@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X } from "lucide-react";
+import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock } from "lucide-react";
 import { useStore } from "./store/useStore";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
@@ -215,7 +215,14 @@ export default function BizTrack() {
     showToast("Sale recorded!");
   };
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName };
+  const onboardingComplete = useStore(s => s.onboardingComplete);
+  const setOnboardingComplete = useStore(s => s.setOnboardingComplete);
+  const hasSeenGuide = useStore(s => s.hasSeenGuide);
+  const setHasSeenGuide = useStore(s => s.setHasSeenGuide);
+  const isPinEnabled = useStore(s => s.isPinEnabled);
+  const pin = useStore(s => s.pin);
+
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, theme, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin };
 
   return (
     <div style={S.shell}>
@@ -228,6 +235,7 @@ export default function BizTrack() {
         </div>
         <InstallPrompt />
         <BottomNav ctx={ctx} />
+        {onboardingComplete && !hasSeenGuide && <FeatureGuide ctx={ctx} />}
 
         {/* MODALS */}
         {modal === "addBiz" && <AddBizModal ctx={ctx} />}
@@ -262,7 +270,7 @@ function HomeScreen({ ctx }) {
       </div>
 
       {/* SUMMARY CARD */}
-      <div style={S.summaryCard}>
+      <div id="home-summary" style={S.summaryCard}>
         <div style={S.summaryOrb} />
         <p style={S.summaryLabel}>Total Profit This Month</p>
         <h2 style={S.summaryAmount}>{fmt(totalProfit)}</h2>
@@ -298,7 +306,7 @@ function HomeScreen({ ctx }) {
       {/* BUSINESSES */}
       <div style={S.sectionRow}>
         <p style={S.sectionLabel}>My Businesses</p>
-        <button style={S.textBtn} onClick={() => setModal("addBiz")}>+ Add New</button>
+        <button id="add-biz-btn" style={S.textBtn} onClick={() => setModal("addBiz")}>+ Add New</button>
       </div>
 
       <div style={S.cardList}>
@@ -700,6 +708,39 @@ function SettingsScreen({ ctx }) {
           </div>
         </div>
 
+        
+        {/* SECURITY */}
+        <div style={S.settingsSection}>
+          <p style={S.settingsSectionTitle}>Security</p>
+          <div style={S.settingsCard}>
+            <div style={S.settingsRow} onClick={() => {
+              if (ctx.isPinEnabled) {
+                useStore.getState().setIsPinEnabled(false);
+                useStore.getState().setPin(null);
+                showToast("PIN disabled");
+              } else {
+                const newPin = prompt("Enter a 4-digit PIN:");
+                if (newPin && newPin.length === 4 && /\d{4}/.test(newPin)) {
+                  useStore.getState().setPin(newPin);
+                  useStore.getState().setIsPinEnabled(true);
+                  showToast("PIN enabled!");
+                } else if (newPin) {
+                  alert("Invalid PIN. Must be 4 digits.");
+                }
+              }
+            }}>
+              <Lock size={20} color="#9B7B5E" />
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Passcode Lock</p>
+                <p style={S.settingsRowSub}>{ctx.isPinEnabled ? "Enabled — Tap to disable" : "Disabled — Tap to enable"}</p>
+              </div>
+              <div style={{ width: 40, height: 20, background: ctx.isPinEnabled ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
+                <div style={{ width: 16, height: 16, background: "#FFF", borderRadius: "50%", position: "absolute", top: 2, left: ctx.isPinEnabled ? 22 : 2, transition: "0.3s" }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* DATA */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Data</p>
@@ -1035,7 +1076,7 @@ function BottomNav({ ctx }) {
   const { screen, setScreen, setModal } = ctx;
   const tabs = [
     { id: "home", icon: <Home size={22} />, label: "Home" },
-    { id: "analytics", icon: <BarChart2 size={22} />, label: "Analytics" },
+    { id: "analytics", icon: <div id="nav-analytics"><BarChart2 size={22} /></div>, label: "Analytics" },
     
     { id: "settings", icon: <Settings size={22} />, label: "Settings" },
   ];
@@ -1051,6 +1092,167 @@ function BottomNav({ ctx }) {
           <span style={{ ...S.navLabel, ...(screen === t.id ? { color: "#2C1810" } : {}) }}>{t.label}</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+
+/* ─── ONBOARDING ───────────────────────────────────────────────────────────── */
+function Onboarding({ ctx }) {
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const { setUserName, setOnboardingComplete, addBusiness } = ctx;
+
+  const next = () => {
+    if (step === 1 && name.trim()) {
+      setUserName(name.trim());
+    }
+    if (step === 2) {
+      setOnboardingComplete(true);
+    } else {
+      setStep(step + 1);
+    }
+  };
+
+  return (
+    <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4", textAlign: "center" }}>
+      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 40 }}>
+        {step === 0 && (
+          <div style={{ animation: "fadeIn 0.8s ease" }}>
+            <div style={{ fontSize: 64, marginBottom: 20 }}>✨</div>
+            <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
+            <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16 }}>Your all-in-one business growth companion.</p>
+            <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 40 }} onClick={next}>Get Started</button>
+          </div>
+        )}
+        {step === 1 && (
+          <div style={{ animation: "fadeIn 0.5s ease" }}>
+            <h2 style={{ ...S.sectionLabel, color: "#FAF8F4", fontSize: 24, marginBottom: 24 }}>What's your name?</h2>
+            <input 
+              style={{ ...S.input, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#FAF8F4", textAlign: "center", fontSize: 18 }}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Sabi"
+              autoFocus
+            />
+            <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 24, opacity: name.trim() ? 1 : 0.5 }} disabled={!name.trim()} onClick={next}>Continue</button>
+          </div>
+        )}
+        {step === 2 && (
+          <div style={{ animation: "fadeIn 0.5s ease" }}>
+            <h2 style={{ ...S.sectionLabel, color: "#FAF8F4", fontSize: 24, marginBottom: 12 }}>All set, {name}!</h2>
+            <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 32 }}>Let's start by adding your first business on the home screen.</p>
+            <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 20, padding: 30, border: "1.5px dashed rgba(255,255,255,0.2)" }}>
+               <Store size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 12 }} />
+               <p style={{ fontSize: 14, color: "rgba(255,255,255,0.5)" }}>Your dashboard is waiting...</p>
+            </div>
+            <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 40 }} onClick={next}>Enter Dashboard</button>
+          </div>
+        )}
+      </div>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+    </div>
+  );
+}
+
+/* ─── SECURITY ─────────────────────────────────────────────────────────────── */
+function PinLock({ ctx, onUnlock }) {
+  const [input, setInput] = useState("");
+  const { pin, userName } = ctx;
+
+  const press = (n) => {
+    if (input.length < 4) {
+      const newVal = input + n;
+      setInput(newVal);
+      if (newVal === pin) {
+        setTimeout(onUnlock, 200);
+      } else if (newVal.length === 4) {
+        setTimeout(() => setInput(""), 500);
+      }
+    }
+  };
+
+  return (
+    <div style={{ ...S.shell, background: "#FAF8F4" }}>
+      <div style={{ ...S.phone, padding: 40, alignItems: "center", justifyContent: "center" }}>
+        <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, marginBottom: 16 }}>{userName[0]}</div>
+        <h2 style={{ ...S.userName, marginBottom: 8 }}>Welcome back</h2>
+        <p style={{ ...S.greeting, marginBottom: 40 }}>Enter PIN to unlock</p>
+        
+        <div style={{ display: "flex", gap: 16, marginBottom: 40 }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{ width: 16, height: 16, borderRadius: "50%", background: input.length > i ? "#2C1810" : "#E0D6C8" }} />
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          {[1,2,3,4,5,6,7,8,9].map(n => (
+            <button key={n} style={S.numKey} onClick={() => press(n)}>{n}</button>
+          ))}
+          <div />
+          <button style={S.numKey} onClick={() => press(0)}>0</button>
+          <button style={{ ...S.numKey, fontSize: 14 }} onClick={() => setInput("")}>Clear</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── FEATURE GUIDE ────────────────────────────────────────────────────────── */
+function FeatureGuide({ ctx }) {
+  const [step, setStep] = useState(0);
+  const { setHasSeenGuide } = ctx;
+
+  const steps = [
+    { target: "home-summary", text: "Here is your total profit across all businesses.", pos: "bottom" },
+    { target: "add-biz-btn", text: "Tap here to add a new business to your portfolio.", pos: "top" },
+    { target: "nav-analytics", text: "See your growth trends and profit ranking here.", pos: "top" }
+  ];
+
+  const next = () => {
+    if (step === steps.length - 1) {
+      setHasSeenGuide(true);
+    } else {
+      setStep(step + 1);
+    }
+  };
+
+  const current = steps[step];
+  const el = document.getElementById(current.target);
+  const rect = el ? el.getBoundingClientRect() : { top: 0, left: 0, width: 0, height: 0 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, pointerEvents: "none" }}>
+      <div style={{ 
+        position: "absolute", 
+        inset: 0, 
+        background: "rgba(0,0,0,0.7)", 
+        clipPath: `polygon(0% 0%, 0% 100%, ${rect.left}px 100%, ${rect.left}px ${rect.top}px, ${rect.right}px ${rect.top}px, ${rect.right}px ${rect.bottom}px, ${rect.left}px ${rect.bottom}px, ${rect.left}px 100%, 100% 100%, 100% 0%)`,
+        pointerEvents: "auto"
+      }} onClick={next} />
+      
+      <div style={{ 
+        position: "absolute", 
+        top: current.pos === "bottom" ? rect.bottom + 20 : rect.top - 120,
+        left: Math.max(20, Math.min(window.innerWidth - 220, rect.left + rect.width/2 - 100)),
+        width: 200,
+        background: "#FFFFFF",
+        borderRadius: 16,
+        padding: 16,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+        pointerEvents: "auto",
+        animation: "slideIn 0.3s ease"
+      }}>
+        <p style={{ fontSize: 13, color: "#2C1810", fontWeight: 500, margin: "0 0 12px", lineHeight: 1.4 }}>{current.text}</p>
+        <button style={{ ...S.primaryBtn, padding: "8px", fontSize: 12 }} onClick={next}>
+          {step === steps.length - 1 ? "Finish Guide" : "Next Tip"}
+        </button>
+      </div>
+      <style>{`
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </div>
   );
 }
@@ -1221,4 +1423,5 @@ const S = {
   addNavIcon: { color: "#C17F5A", fontWeight: 900 },
 
   toast: { position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)", background: "#2C1810", color: "#FAF8F4", padding: "12px 24px", borderRadius: 99, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", zIndex: 200 },
+  numKey: { width: 64, height: 64, borderRadius: "50%", border: "1.5px solid #E0D6C8", background: "#FFF", fontSize: 24, fontWeight: 700, color: "#2C1810", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none" },
 };
