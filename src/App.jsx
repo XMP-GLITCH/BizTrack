@@ -467,7 +467,7 @@ export default function BizTrack() {
                 <div style={{ background: "rgba(193,127,90,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
                    <RefreshCw size={32} color="var(--accent-color)" className={isUpdating ? "spin" : ""} />
                 </div>
-                <h2 style={S.modalTitle}>{isUpdating ? "Installing Update..." : "Update Available ✨"}</h2>
+                <h2 style={S.modalTitle}>{isUpdating ? "Installing Update..." : "Update Available"}</h2>
                 <p style={{ ...S.greeting, color: "var(--text-secondary)", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
                    {isUpdating ? "Downloading and applying the latest changes. This will only take a moment." : "A new version of BizTrack is ready with improvements and new features. Update now to stay current?"}
                 </p>
