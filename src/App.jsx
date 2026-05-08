@@ -1253,17 +1253,27 @@ function AddSaleModal({ ctx }) {
           </>
         )}
 
-        <p style={S.fieldLabel}>Note (optional)</p>
-        <input style={S.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Order from Instagram" />
-
-        {preview && (
-          <div style={S.calcPreview}>
-            <p style={S.calcLabel}>Total Revenue: <strong>{fmt(preview.revenue)}</strong></p>
-            <p style={S.calcLabel}>Net Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
+        {tab === "inventory" && activeBiz?.inventory.length === 0 ? (
+          <div style={{ padding: "32px 0", textAlign: "center" }}>
+            <Package size={48} color="var(--text-secondary)" style={{ opacity: 0.3, marginBottom: 12 }} />
+            <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: 0 }}>No inventory found.</p>
+            <p style={{ fontSize: 12, color: "var(--text-secondary)", opacity: 0.7, marginTop: 4 }}>Add items to your business first or use the Custom ✨ tab.</p>
           </div>
-        )}
+        ) : (
+          <>
+            <p style={S.fieldLabel}>Note (optional)</p>
+            <input style={S.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Order from Instagram" />
 
-        <button style={S.primaryBtn} onClick={submit} disabled={tab === "inventory" && activeBiz?.inventory.length === 0}>Record Sale</button>
+            {preview && (
+              <div style={S.calcPreview}>
+                <p style={S.calcLabel}>Total Revenue: <strong>{fmt(preview.revenue)}</strong></p>
+                <p style={S.calcLabel}>Net Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
+              </div>
+            )}
+
+            <button style={S.primaryBtn} onClick={submit}>Record Sale</button>
+          </>
+        )}
       </div>
     </ModalShell>
   );
