@@ -13,8 +13,12 @@
       // Force unregister old service workers to break cache loops
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for(let registration of registrations) {
-            registration.unregister();
+          if (registrations.length > 0) {
+            for(let registration of registrations) {
+              registration.unregister();
+            }
+            // Once unregistered, force a clean reload from the server
+            window.location.reload(true);
           }
         });
       }

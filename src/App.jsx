@@ -1532,7 +1532,7 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
           </div>
         )}
       </div>
-      <p style={{ position: "absolute", bottom: 20, left: 0, right: 0, textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.4)", pointerEvents: "none" }}>BizTrack v1.4.1 • Build 2026.05.08</p>
+      <p style={{ position: "absolute", bottom: 20, left: 0, right: 0, textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.4)", pointerEvents: "none" }}>BizTrack v1.4.3 • Build 2026.05.08</p>
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
@@ -2009,7 +2009,7 @@ function AccountScreen({ ctx }) {
 
         
         <div style={{ height: 40 }} />
-        <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5, marginBottom: 20 }}>BizTrack v1.4.1 • Build 2026.05.08</p>
+        <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5, marginBottom: 20 }}>BizTrack v1.4.3 • Build 2026.05.08</p>
       </div>
     </div>
   );
