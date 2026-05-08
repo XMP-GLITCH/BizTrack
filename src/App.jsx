@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, List, History, Sparkles, CheckCircle2 } from "lucide-react";
+import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, List, History, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
 import { useStore } from "./store/useStore";
+import { useRegisterSW } from "virtual:pwa-register/react";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
 const COLOR_NAMES = ["Terracotta","Gold","Sage","Rose","Slate","Plum","Mint","Sand"];
@@ -185,6 +186,18 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
 }
 
 export default function BizTrack() {
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered(r) {
+      console.log('SW Registered: ' + r)
+    },
+    onRegisterError(error) {
+      console.log('SW registration error', error)
+    },
+  });
+
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   
   useEffect(() => {
@@ -390,6 +403,31 @@ export default function BizTrack() {
         {modal === "delete-biz" && <DeleteBizModal ctx={ctx} />}
         {/* INDEPENDENT TOAST */}
         {activeToast && <Toast msg={activeToast} onDismiss={() => setActiveToast(null)} />}
+
+        {/* PWA UPDATE MODAL */}
+        {needRefresh && (
+          <div style={S.modalOverlay}>
+             <div style={{ ...S.modalSheet, padding: 32, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ background: "rgba(193,127,90,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+                   <RefreshCw size={32} color="var(--accent-color)" className="animate-spin" />
+                </div>
+                <h2 style={S.modalTitle}>Update Available ✨</h2>
+                <p style={{ ...S.greeting, color: "var(--text-secondary)", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+                   A new version of BizTrack is ready with improvements and new features. Update now to stay current?
+                </p>
+                <div style={{ display: "flex", gap: 12, width: "100%" }}>
+                   <button 
+                     style={{ ...S.ghostBtn, flex: 1 }} 
+                     onClick={() => setNeedRefresh(false)}
+                   >Later</button>
+                   <button 
+                     style={{ ...S.primaryBtn, flex: 2, marginTop: 0 }} 
+                     onClick={() => updateServiceWorker(true)}
+                   >Update Now</button>
+                </div>
+             </div>
+          </div>
+        )}
       </div>
     </div>
   );
