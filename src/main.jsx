@@ -7,9 +7,8 @@ import { registerSW } from 'virtual:pwa-register'
 // Initialize PWA Service Worker for Offline access
 const updateSW = registerSW({
   onNeedRefresh() {
-    if (confirm('New update available! Reload to apply changes? (Your data will be safe)')) {
-      updateSW(true);
-    }
+    // Force silent update and reload
+    updateSW(true);
   },
   onOfflineReady() {
     console.log('App is ready to work offline.')
