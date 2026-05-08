@@ -426,7 +426,6 @@ export default function BizTrack() {
           {screen === "analytics" && <AnalyticsScreen ctx={ctx} />}
           {screen === "account" && <AccountScreen ctx={ctx} />}
           {screen === "about" && <AboutScreen ctx={ctx} />}
-          {screen === "updates" && <UpdateLogScreen ctx={ctx} />}
         </div>
         <InstallPrompt deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />
         <BottomNav ctx={ctx} />
@@ -1022,16 +1021,7 @@ function SettingsScreen({ ctx }) {
               <Info size={20} color="var(--accent-color)" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>About BizTrack</p>
-                <p style={S.settingsRowSub}>Version {VERSION} · Learn more</p>
-              </div>
-              <ChevronRight size={20} color="var(--text-secondary)" />
-            </div>
-            <div style={S.settingsDivider} />
-            <div style={S.settingsRow} onClick={() => setScreen("updates")}>
-              <History size={20} color="var(--accent-color)" />
-              <div style={{ flex: 1 }}>
-                <p style={S.settingsRowLabel}>Update Log</p>
-                <p style={S.settingsRowSub}>What's new in {VERSION}</p>
+                <p style={S.settingsRowSub}>Version {VERSION} · Features & Updates</p>
               </div>
               <ChevronRight size={20} color="var(--text-secondary)" />
             </div>
@@ -1522,7 +1512,9 @@ function BottomNav({ ctx }) {
 
 /* ─── ABOUT SCREEN ─────────────────────────────────────────────────────────── */
 function AboutScreen({ ctx }) {
-  const { setScreen } = ctx;
+  const { setScreen, checkUpdates } = ctx;
+  const [tab, setTab] = useState("features"); // "features" | "updates"
+
   const features = [
     { icon: <Store size={20} />, title: "Multi-Business Management", desc: "Track and manage multiple business ventures from a single unified dashboard." },
     { icon: <Package size={20} />, title: "Smart Inventory Tracking", desc: "Real-time stock monitoring with intelligent low-stock alerts and cost-per-unit analysis." },
@@ -1540,84 +1532,86 @@ function AboutScreen({ ctx }) {
         <div style={{ width: 32 }} />
       </div>
 
-      <div style={S.tabInner}>
-        <div style={{ ...S.summaryCard, textAlign: "center", padding: "40px 24px" }}>
-          <div style={S.summaryOrb} />
-          <div style={{ background: "rgba(255,255,255,0.1)", width: 80, height: 80, borderRadius: 24, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", position: "relative" }}>
-             <Store size={40} color="#FFF" />
-          </div>
-          <h2 style={{ ...S.userName, color: "#FFF", fontSize: 28 }}>BizTrack</h2>
-          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 8 }}>Empowering local entrepreneurs and creators to scale with confidence.</p>
-        </div>
-
-        <p style={S.sectionLabel}>Core Features</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {features.map((f, i) => (
-            <div key={i} style={{ ...S.settingsCard, padding: 16, display: "flex", gap: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(193,127,90,0.1)", color: "var(--accent-color)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                {f.icon}
-              </div>
-              <div>
-                <p style={{ ...S.settingsRowLabel, fontSize: 15 }}>{f.title}</p>
-                <p style={{ ...S.settingsRowSub, lineHeight: 1.5, marginTop: 4 }}>{f.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ ...S.infoCard, background: "rgba(193,127,90,0.05)", borderLeft: "4px solid var(--accent-color)", marginTop: 12 }}>
-          <p style={{ ...S.infoLabel, color: "var(--accent-color)" }}>Built with ❤️ for</p>
-          <p style={S.infoVal}>Independent Creators</p>
-          <p style={S.infoSub}>Whether you crochet, bake, or design, BizTrack is built to help you understand your numbers.</p>
-        </div>
-
+      <div style={S.tabs}>
         <button 
-          style={{ ...S.primaryBtn, marginTop: 24, background: "var(--accent-color)" }} 
-          onClick={() => ctx.checkUpdates(true)}
-        >
-          Check for Updates
-        </button>
-        
-        <div style={{ height: 40 }} />
-      </div>
-    </div>
-  );
-}
-
-/* ─── UPDATE LOG SCREEN ────────────────────────────────────────────────────── */
-function UpdateLogScreen({ ctx }) {
-  const { setScreen } = ctx;
-  return (
-    <div style={S.screen}>
-      <div style={S.pageHeader}>
-        <button style={S.backBtn} onClick={() => setScreen("settings")}><ArrowLeft size={24} /></button>
-        <h2 style={S.pageTitle}>Update Log</h2>
-        <div style={{ width: 32 }} />
+          style={{ ...S.tab, ...(tab === "features" ? S.tabActive : {}) }} 
+          onClick={() => setTab("features")}
+        >Features</button>
+        <button 
+          style={{ ...S.tab, ...(tab === "updates" ? S.tabActive : {}) }} 
+          onClick={() => setTab("updates")}
+        >Updates</button>
       </div>
 
-      <div style={S.tabInner}>
-        <div style={S.timeline}>
-          {UPDATE_LOG.map((log, idx) => (
-            <div key={log.version} style={S.updateItem}>
-              {idx !== UPDATE_LOG.length - 1 && <div style={S.timelineLine} />}
-              <div style={{ ...S.timelineDot, background: idx === 0 ? "var(--accent-color)" : "var(--border-color)" }} />
-              <div style={{ flex: 1, paddingBottom: 32 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ ...S.badge, background: idx === 0 ? "rgba(193,127,90,0.1)" : "var(--border-color)", color: idx === 0 ? "var(--accent-color)" : "var(--text-secondary)", fontSize: 12, borderRadius: 8 }}>{log.version}</span>
-                  <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>{log.date}</span>
+      <div style={S.tabContent}>
+        <div style={S.tabInner}>
+          {tab === "features" ? (
+            <>
+              <div style={{ ...S.summaryCard, textAlign: "center", padding: "40px 24px" }}>
+                <div style={S.summaryOrb} />
+                <div style={{ background: "rgba(255,255,255,0.1)", width: 80, height: 80, borderRadius: 24, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", position: "relative" }}>
+                   <Store size={40} color="#FFF" />
                 </div>
-                <h3 style={{ fontSize: 18, color: "var(--text-primary)", margin: "0 0 12px" }}>{log.title}</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {log.changes.map((change, i) => (
-                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                      <CheckCircle2 size={14} color="var(--accent-color)" style={{ marginTop: 2, flexShrink: 0 }} />
-                      <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>{change}</p>
-                    </div>
-                  ))}
-                </div>
+                <h2 style={{ ...S.userName, color: "#FFF", fontSize: 28 }}>BizTrack</h2>
+                <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 8 }}>Empowering local entrepreneurs and creators to scale with confidence.</p>
               </div>
-            </div>
-          ))}
+
+              <p style={S.sectionLabel}>Core Features</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {features.map((f, i) => (
+                  <div key={i} style={{ ...S.settingsCard, padding: 16, display: "flex", gap: 16 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(193,127,90,0.1)", color: "var(--accent-color)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {f.icon}
+                    </div>
+                    <div>
+                      <p style={{ ...S.settingsRowLabel, fontSize: 15 }}>{f.title}</p>
+                      <p style={{ ...S.settingsRowSub, lineHeight: 1.5, marginTop: 4 }}>{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ ...S.infoCard, background: "rgba(193,127,90,0.05)", borderLeft: "4px solid var(--accent-color)", marginTop: 12 }}>
+                <p style={{ ...S.infoLabel, color: "var(--accent-color)" }}>Built with ❤️ for</p>
+                <p style={S.infoVal}>Independent Creators</p>
+                <p style={S.infoSub}>Whether you crochet, bake, or design, BizTrack is built to help you understand your numbers.</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <button 
+                style={{ ...S.primaryBtn, marginBottom: 8, background: "var(--accent-color)" }} 
+                onClick={() => checkUpdates(true)}
+              >
+                Check for Updates
+              </button>
+              
+              <div style={S.timeline}>
+                {UPDATE_LOG.map((log, idx) => (
+                  <div key={log.version} style={S.updateItem}>
+                    {idx !== UPDATE_LOG.length - 1 && <div style={S.timelineLine} />}
+                    <div style={{ ...S.timelineDot, background: idx === 0 ? "var(--accent-color)" : "var(--border-color)" }} />
+                    <div style={{ flex: 1, paddingBottom: 32 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ ...S.badge, background: idx === 0 ? "rgba(193,127,90,0.1)" : "var(--border-color)", color: idx === 0 ? "var(--accent-color)" : "var(--text-secondary)", fontSize: 12, borderRadius: 8 }}>{log.version}</span>
+                        <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>{log.date}</span>
+                      </div>
+                      <h3 style={{ fontSize: 18, color: "var(--text-primary)", margin: "0 0 12px" }}>{log.title}</h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {log.changes.map((change, i) => (
+                          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                            <CheckCircle2 size={14} color="var(--accent-color)" style={{ marginTop: 2, flexShrink: 0 }} />
+                            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>{change}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          <div style={{ height: 40 }} />
         </div>
       </div>
     </div>
