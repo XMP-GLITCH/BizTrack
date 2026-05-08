@@ -316,6 +316,7 @@ export default function BizTrack() {
   const hasSeenGuide = useStore(s => s.hasSeenGuide);
   const setHasSeenGuide = useStore(s => s.setHasSeenGuide);
   const isPinEnabled = useStore(s => s.isPinEnabled);
+  const setIsPinEnabled = useStore(s => s.setIsPinEnabled);
 
   const userEmail = useStore(s => s.userEmail);
   const setUserEmail = useStore(s => s.setUserEmail);
