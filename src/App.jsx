@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp } from "lucide-react";
+import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, List, History, Sparkles, CheckCircle2 } from "lucide-react";
 import { useStore } from "./store/useStore";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
@@ -10,6 +10,19 @@ const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Acce
 const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
+const VERSION = "v1.4.5";
+const BUILD_DATE = "2026.05.08";
+
+const UPDATE_LOG = [
+  { version: "v1.4.5", date: "May 8, 2026", title: "About & Updates", changes: ["Added dedicated About section with feature list.", "Integrated Update Log for better transparency.", "Standardized versioning across the app."] },
+  { version: "v1.4.3", date: "May 8, 2026", title: "Onboarding & Personas", changes: ["Refined onboarding flow for new users.", "Added premium Persona picker in Account settings.", "Improved local data encryption stability."] },
+  { version: "v1.4.1", date: "May 8, 2026", title: "UI Polish", changes: ["Decoupled toast notifications from modals.", "Generalized sale entry labels for craft businesses.", "Fixed layout issues on narrow screens."] },
+  { version: "v1.4.0", date: "May 7, 2026", title: "Performance & Security", changes: ["Hardened security logic for PIN lock.", "Optimized PWA installation prompts.", "Audit and fix for critical runtime crashes."] },
+  { version: "v1.3.0", date: "Apr 28, 2026", title: "Dark Mode & Charts", changes: ["Full Dark Mode support implemented.", "Enhanced Analytics with interactive Recharts.", "Improved profit margin visualizations."] },
+  { version: "v1.2.0", date: "Apr 15, 2026", title: "Security First", changes: ["Added 4-digit PIN protection.", "Implemented SHA-256 hashed recovery key system."] },
+  { version: "v1.1.0", date: "Mar 30, 2026", title: "Data Portability", changes: ["Added CSV export for sales and inventory data.", "Improved currency formatting for multiple regions."] },
+  { version: "v1.0.0", date: "Mar 19, 2026", title: "Genesis", changes: ["Initial release with multi-business tracking.", "Inventory and basic sales management."] },
+];
 
 /* ─── HELPERS ──────────────────────────────────────────────────────────────── */
 const fmt = (n) => {
@@ -361,6 +374,8 @@ export default function BizTrack() {
           {screen === "settings" && <SettingsScreen ctx={ctx} />}
           {screen === "analytics" && <AnalyticsScreen ctx={ctx} />}
           {screen === "account" && <AccountScreen ctx={ctx} />}
+          {screen === "about" && <AboutScreen ctx={ctx} />}
+          {screen === "updates" && <UpdateLogScreen ctx={ctx} />}
         </div>
         <InstallPrompt deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />
         <BottomNav ctx={ctx} />
@@ -472,7 +487,7 @@ function HomeScreen({ ctx }) {
         })}
       </div>
       <div style={{ height: 40 }} />
-      <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5 }}>BizTrack v1.4.1 • Build 2026.05.08</p>
+      <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5 }}>BizTrack {VERSION} • Build {BUILD_DATE}</p>
     </div>
   );
 }
@@ -927,12 +942,22 @@ function SettingsScreen({ ctx }) {
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>About</p>
           <div style={S.settingsCard}>
-            <div style={S.settingsRow}>
-              <Smartphone size={20} color="#9B7B5E" />
+            <div style={S.settingsRow} onClick={() => setScreen("about")}>
+              <Info size={20} color="var(--accent-color)" />
               <div style={{ flex: 1 }}>
-                <p style={S.settingsRowLabel}>BizTrack</p>
-                <p style={S.settingsRowSub}>Version 1.0.0 · Built with ❤️</p>
+                <p style={S.settingsRowLabel}>About BizTrack</p>
+                <p style={S.settingsRowSub}>Version {VERSION} · Learn more</p>
               </div>
+              <ChevronRight size={20} color="var(--text-secondary)" />
+            </div>
+            <div style={S.settingsDivider} />
+            <div style={S.settingsRow} onClick={() => setScreen("updates")}>
+              <History size={20} color="var(--accent-color)" />
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Update Log</p>
+                <p style={S.settingsRowSub}>What's new in {VERSION}</p>
+              </div>
+              <ChevronRight size={20} color="var(--text-secondary)" />
             </div>
           </div>
         </div>
@@ -1394,6 +1419,7 @@ function Toast({ msg, onDismiss }) {
 }
 
 /* ─── BOTTOM NAV ────────────────────────────────────────────────────────────── */
+/* ─── BOTTOM NAV ────────────────────────────────────────────────────────────── */
 function BottomNav({ ctx }) {
   const { screen, setScreen, setModal } = ctx;
   const tabs = [
@@ -1414,6 +1440,103 @@ function BottomNav({ ctx }) {
           <span style={{ ...S.navLabel, ...(screen === t.id ? { color: "var(--text-primary)" } : {}) }}>{t.label}</span>
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ─── ABOUT SCREEN ─────────────────────────────────────────────────────────── */
+function AboutScreen({ ctx }) {
+  const { setScreen } = ctx;
+  const features = [
+    { icon: <Store size={20} />, title: "Multi-Business Management", desc: "Track and manage multiple business ventures from a single unified dashboard." },
+    { icon: <Package size={20} />, title: "Smart Inventory Tracking", desc: "Real-time stock monitoring with intelligent low-stock alerts and cost-per-unit analysis." },
+    { icon: <TrendingUp size={20} />, title: "Performance Analytics", desc: "Visualize your growth with profit rankings, revenue charts, and detailed business insights." },
+    { icon: <Lock size={20} />, title: "Secure & Private", desc: "Your data stays on your device. Protected by industrial-grade PIN encryption." },
+    { icon: <Cloud size={20} />, title: "Local-First / PWA Ready", desc: "Install BizTrack on your home screen for a native experience that works offline." },
+    { icon: <Sparkles size={20} />, title: "Custom Sales Entry", desc: "Flexible recording for both inventoried products and custom one-off services." }
+  ];
+
+  return (
+    <div style={S.screen}>
+      <div style={S.pageHeader}>
+        <button style={S.backBtn} onClick={() => setScreen("settings")}><ArrowLeft size={24} /></button>
+        <h2 style={S.pageTitle}>About BizTrack</h2>
+        <div style={{ width: 32 }} />
+      </div>
+
+      <div style={S.tabInner}>
+        <div style={{ ...S.summaryCard, textAlign: "center", padding: "40px 24px" }}>
+          <div style={S.summaryOrb} />
+          <div style={{ background: "rgba(255,255,255,0.1)", width: 80, height: 80, borderRadius: 24, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", position: "relative" }}>
+             <Store size={40} color="#FFF" />
+          </div>
+          <h2 style={{ ...S.userName, color: "#FFF", fontSize: 28 }}>BizTrack</h2>
+          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 8 }}>Empowering local entrepreneurs and creators to scale with confidence.</p>
+        </div>
+
+        <p style={S.sectionLabel}>Core Features</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {features.map((f, i) => (
+            <div key={i} style={{ ...S.settingsCard, padding: 16, display: "flex", gap: 16 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(193,127,90,0.1)", color: "var(--accent-color)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {f.icon}
+              </div>
+              <div>
+                <p style={{ ...S.settingsRowLabel, fontSize: 15 }}>{f.title}</p>
+                <p style={{ ...S.settingsRowSub, lineHeight: 1.5, marginTop: 4 }}>{f.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ ...S.infoCard, background: "rgba(193,127,90,0.05)", borderLeft: "4px solid var(--accent-color)", marginTop: 12 }}>
+          <p style={{ ...S.infoLabel, color: "var(--accent-color)" }}>Built with ❤️ for</p>
+          <p style={S.infoVal}>Independent Creators</p>
+          <p style={S.infoSub}>Whether you crochet, bake, or design, BizTrack is built to help you understand your numbers.</p>
+        </div>
+        
+        <div style={{ height: 40 }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── UPDATE LOG SCREEN ────────────────────────────────────────────────────── */
+function UpdateLogScreen({ ctx }) {
+  const { setScreen } = ctx;
+  return (
+    <div style={S.screen}>
+      <div style={S.pageHeader}>
+        <button style={S.backBtn} onClick={() => setScreen("settings")}><ArrowLeft size={24} /></button>
+        <h2 style={S.pageTitle}>Update Log</h2>
+        <div style={{ width: 32 }} />
+      </div>
+
+      <div style={S.tabInner}>
+        <div style={S.timeline}>
+          {UPDATE_LOG.map((log, idx) => (
+            <div key={log.version} style={S.updateItem}>
+              {idx !== UPDATE_LOG.length - 1 && <div style={S.timelineLine} />}
+              <div style={{ ...S.timelineDot, background: idx === 0 ? "var(--accent-color)" : "var(--border-color)" }} />
+              <div style={{ flex: 1, paddingBottom: 32 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ ...S.badge, background: idx === 0 ? "rgba(193,127,90,0.1)" : "var(--border-color)", color: idx === 0 ? "var(--accent-color)" : "var(--text-secondary)", fontSize: 12, borderRadius: 8 }}>{log.version}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>{log.date}</span>
+                </div>
+                <h3 style={{ fontSize: 18, color: "var(--text-primary)", margin: "0 0 12px" }}>{log.title}</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {log.changes.map((change, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <CheckCircle2 size={14} color="var(--accent-color)" style={{ marginTop: 2, flexShrink: 0 }} />
+                      <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, lineHeight: 1.4 }}>{change}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1562,7 +1685,7 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
           </div>
         )}
       </div>
-      <p style={{ position: "absolute", bottom: 20, left: 0, right: 0, textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.4)", pointerEvents: "none" }}>BizTrack v1.4.3 • Build 2026.05.08</p>
+      <p style={{ position: "absolute", bottom: 20, left: 0, right: 0, textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.4)", pointerEvents: "none" }}>BizTrack {VERSION} • Build {BUILD_DATE}</p>
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
@@ -2039,7 +2162,7 @@ function AccountScreen({ ctx }) {
 
         
         <div style={{ height: 40 }} />
-        <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5, marginBottom: 20 }}>BizTrack v1.4.3 • Build 2026.05.08</p>
+        <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5, marginBottom: 20 }}>BizTrack {VERSION} • Build {BUILD_DATE}</p>
       </div>
     </div>
   );
@@ -2213,4 +2336,10 @@ const S = {
 
   toast: { position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)", background: "#2C1810", color: "var(--bg-primary)", padding: "12px 24px", borderRadius: 99, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", zIndex: 200 },
   numKey: { width: 64, height: 64, borderRadius: "50%", border: "1.5px solid var(--border-color)", background: "var(--card-bg)", fontSize: 24, fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none" },
+
+  // TIMELINE
+  timeline: { display: "flex", flexDirection: "column", gap: 24, paddingLeft: 12, marginTop: 10 },
+  updateItem: { display: "flex", gap: 20, position: "relative" },
+  timelineLine: { position: "absolute", left: 6, top: 0, bottom: -24, width: 2, background: "var(--border-color)", zIndex: 0 },
+  timelineDot: { width: 14, height: 14, borderRadius: "50%", border: "3px solid var(--bg-primary)", position: "relative", zIndex: 1, marginTop: 18, marginLeft: -0.5 },
 };
