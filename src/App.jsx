@@ -206,8 +206,46 @@ export default function BizTrack() {
       setDeferredPrompt(e);
       console.log("Install prompt captured!");
     };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const checkUpdates = async (manual = false) => {
+    if (manual) showToast("Checking for updates...");
+    if ('serviceWorker' in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          await reg.update();
+          // If manual and no new content found after update()
+          if (manual && !reg.waiting && !reg.installing) {
+            setTimeout(() => showToast("App is up to date!"), 500);
+          }
+        }
+      } catch (e) {
+        console.error("SW Update Error:", e);
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Immediate check
+    checkUpdates();
+
+    // Check on focus or visibility change (very aggressive)
+    const handleCheck = () => {
+      if (document.visibilityState === 'visible') checkUpdates();
+    };
+    window.addEventListener('focus', handleCheck);
+    document.addEventListener('visibilitychange', handleCheck);
+
+    // Periodic check every 10 minutes
+    const interval = setInterval(() => checkUpdates(), 10 * 60 * 1000);
+
+    return () => {
+      window.removeEventListener('focus', handleCheck);
+      document.removeEventListener('visibilitychange', handleCheck);
+      clearInterval(interval);
+    };
   }, []);
 
   const businesses = useStore(s => s.businesses);
@@ -371,7 +409,7 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled };
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -1532,6 +1570,13 @@ function AboutScreen({ ctx }) {
           <p style={S.infoVal}>Independent Creators</p>
           <p style={S.infoSub}>Whether you crochet, bake, or design, BizTrack is built to help you understand your numbers.</p>
         </div>
+
+        <button 
+          style={{ ...S.primaryBtn, marginTop: 24, background: "var(--accent-color)" }} 
+          onClick={() => ctx.checkUpdates(true)}
+        >
+          Check for Updates
+        </button>
         
         <div style={{ height: 40 }} />
       </div>
