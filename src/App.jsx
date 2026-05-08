@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp } from "lucide-react";
 import { useStore } from "./store/useStore";
@@ -219,10 +219,15 @@ export default function BizTrack() {
 
   const activeBiz = businesses.find((b) => b.id === activeBizId) || null;
 
+  const toastTimer = useRef(null);
   const showToast = (msg) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(msg);
     setModal("toast");
-    setTimeout(() => setModal(null), 2000);
+    toastTimer.current = setTimeout(() => {
+      setModal(null);
+      toastTimer.current = null;
+    }, 1500);
   };
 
   const openBiz = (id) => { setActiveBizId(id); setBizTab("overview"); setScreen("business"); };
