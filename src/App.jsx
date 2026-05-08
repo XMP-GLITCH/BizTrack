@@ -384,7 +384,7 @@ export default function BizTrack() {
         isCustom: true
       };
     } else {
-      const item = biz.inventory.find(i => i.id === sale.itemId);
+      const item = biz.inventory.find(i => String(i.id) === String(sale.itemId));
       if (!item || item.qty < sale.qty) {
         showToast(`Not enough stock for ${item?.name || "item"}`);
         return;
@@ -402,7 +402,7 @@ export default function BizTrack() {
         note: sale.note,
       };
       newInventory = biz.inventory.map((i) =>
-        i.id === sale.itemId ? { ...i, qty: i.qty - sale.qty, sold: i.sold + sale.qty } : i
+        i.id === sale.itemId || String(i.id) === String(sale.itemId) ? { ...i, qty: i.qty - sale.qty, sold: i.sold + sale.qty } : i
       );
     }
 
@@ -1263,11 +1263,11 @@ function AddSaleModal({ ctx }) {
   const [materialCost, setMaterialCost] = useState("");
   const [laborCost, setLaborCost] = useState("");
 
-  const selectedItem = activeBiz?.inventory.find((i) => i.id === Number(itemId));
+  const selectedItem = activeBiz?.inventory.find((i) => String(i.id) === String(itemId));
 
   const handleItemChange = (e) => {
     setItemId(e.target.value);
-    const item = activeBiz?.inventory.find((i) => i.id === Number(e.target.value));
+    const item = activeBiz?.inventory.find((i) => String(i.id) === e.target.value);
     if (item) setActualPrice(String(item.price));
   };
 
@@ -1297,7 +1297,7 @@ function AddSaleModal({ ctx }) {
   const submit = () => {
     if (tab === "inventory") {
       if (!itemId || !qty || !actualPrice) return;
-      addSale(activeBiz.id, { itemId: Number(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note, isCustom: false });
+      addSale(activeBiz.id, { itemId: String(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note, isCustom: false });
     } else {
       if (!manualName || !actualPrice) return;
       addSale(activeBiz.id, { 
