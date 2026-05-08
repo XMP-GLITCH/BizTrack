@@ -13,7 +13,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'avatars/*.png'],
       devOptions: {
-        enabled: true
+        enabled: false
       },
       workbox: {
         skipWaiting: true,

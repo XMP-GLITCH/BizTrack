@@ -183,8 +183,16 @@ export default function BizTrack() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
+
   const businesses = useStore(s => s.businesses);
   const setBusinesses = useStore(s => s.setBusinesses);
+
+  // Safety Catch for Corrupted State
+  if (!businesses || !Array.isArray(businesses)) {
+    console.error("State Corruption Detected! Attempting recovery...");
+    return <div style={{ background: "#2C1810", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>Loading...</div>;
+  }
+
   const currency = useStore(s => s.currency);
   const setCurrency = useStore(s => s.setCurrency);
   const lowStockThreshold = useStore(s => s.lowStockThreshold);
