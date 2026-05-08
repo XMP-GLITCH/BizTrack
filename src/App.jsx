@@ -2068,7 +2068,7 @@ function FeatureGuide({ ctx }) {
 
 /* ─── ACCOUNT SCREEN ───────────────────────────────────────────────────────── */
 function AccountScreen({ ctx }) {
-  const { setScreen, userName, setUserName, businesses, userEmail, setUserEmail, showToast, userAvatar, setUserAvatar, isPinEnabled } = ctx;
+  const { setScreen, setModal, userName, setUserName, businesses, userEmail, setUserEmail, showToast, userAvatar, setUserAvatar, isPinEnabled } = ctx;
   const joinDate = useStore(s => s.joinDate);
   const formattedDate = new Date(joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
