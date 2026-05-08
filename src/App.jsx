@@ -71,35 +71,44 @@ const genEmailCode = () => Math.floor(100000 + Math.random() * 900000).toString(
 
 // EmailJS Configuration (User should fill these in)
 const EMAILJS_CONFIG = {
-  SERVICE_ID: "service_default",
-  TEMPLATE_ID: "template_pin_reset",
-  PUBLIC_KEY: "YOUR_PUBLIC_KEY",
+  SERVICE_ID: "service_56drgpc",
+  TEMPLATE_ID: "template_hpafy7v",
+  PUBLIC_KEY: "dnWW8IiQzni2_D7eN",
+};
+
+const validateEmail = (email) => {
+  return String(email)
+    .toLowerCase()
+    .match(/^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/);
 };
 
 const sendResetEmail = async (email, name, code) => {
-  if (EMAILJS_CONFIG.PUBLIC_KEY === "YOUR_PUBLIC_KEY") {
+  if (EMAILJS_CONFIG.PUBLIC_KEY === "YOUR_PUBLIC_KEY" || !EMAILJS_CONFIG.PUBLIC_KEY) {
     console.warn("EmailJS not configured. Simulating email send...");
+    alert("SIMULATION: Reset code 000000 sent to " + email);
     return true; 
   }
   
   try {
-    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        service_id: EMAILJS_CONFIG.SERVICE_ID,
-        template_id: EMAILJS_CONFIG.TEMPLATE_ID,
-        user_id: EMAILJS_CONFIG.PUBLIC_KEY,
-        template_params: {
-          to_email: email,
-          to_name: name,
-          reset_code: code,
-        },
-      }),
-    });
-    return response.ok;
+    const res = await window.emailjs.send(
+      EMAILJS_CONFIG.SERVICE_ID,
+      EMAILJS_CONFIG.TEMPLATE_ID,
+      {
+        to_email: email,
+        to_name: name,
+        reset_code: code,
+      },
+      EMAILJS_CONFIG.PUBLIC_KEY // Pass key directly for maximum reliability
+    );
+    
+    if (res.status === 200) {
+      alert("Verification email sent! Please check your inbox (and Spam folder).");
+      return true;
+    }
+    return false;
   } catch (err) {
-    console.error("Email send failed:", err);
+    console.error("EmailJS Error:", err);
+    alert(`Email failed: ${err.text || err.message || "Unknown error"}`);
     return false;
   }
 };
@@ -254,30 +263,49 @@ export default function BizTrack() {
   const addSale = (bizId, sale) => {
     const biz = businesses.find(b => b.id === bizId);
     if (!biz) return;
-    const item = biz.inventory.find(i => i.id === sale.itemId);
-    if (!item || item.qty < sale.qty) {
-      showToast(`Not enough stock for ${item?.name || "item"}`);
-      return;
+
+    let newSale;
+    let newInventory = biz.inventory;
+
+    if (sale.isCustom) {
+      newSale = {
+        id: uid(),
+        itemName: sale.manualName,
+        qty: Number(sale.qty) || 1,
+        askingPrice: Number(sale.actualPrice),
+        actualPrice: Number(sale.actualPrice),
+        revenue: Number(sale.actualPrice) * (Number(sale.qty) || 1),
+        cost: Number(sale.manualCost) * (Number(sale.qty) || 1),
+        discount: 0,
+        date: new Date().toISOString().slice(0, 10),
+        note: sale.note,
+        isCustom: true
+      };
+    } else {
+      const item = biz.inventory.find(i => i.id === sale.itemId);
+      if (!item || item.qty < sale.qty) {
+        showToast(`Not enough stock for ${item?.name || "item"}`);
+        return;
+      }
+      newSale = {
+        id: uid(),
+        itemName: item.name,
+        qty: sale.qty,
+        askingPrice: item.price,
+        actualPrice: sale.actualPrice,
+        revenue: sale.actualPrice * sale.qty,
+        cost: item.cost * sale.qty,
+        discount: item.price !== sale.actualPrice ? (item.price - sale.actualPrice) * sale.qty : 0,
+        date: new Date().toISOString().slice(0, 10),
+        note: sale.note,
+      };
+      newInventory = biz.inventory.map((i) =>
+        i.id === sale.itemId ? { ...i, qty: i.qty - sale.qty, sold: i.sold + sale.qty } : i
+      );
     }
 
     setBusinesses(businesses.map((b) => {
       if (b.id !== bizId) return b;
-      const actualPrice = sale.actualPrice; // real price she sold it for
-      const newSale = {
-        id: uid(),
-        itemName: item.name,
-        qty: sale.qty,
-        askingPrice: item.price,         // what she intended to sell for
-        actualPrice: actualPrice,         // what she actually sold for
-        revenue: actualPrice * sale.qty,  // based on actual price
-        cost: item.cost * sale.qty,
-        discount: item.price !== actualPrice ? (item.price - actualPrice) * sale.qty : 0,
-        date: new Date().toISOString().slice(0, 10),
-        note: sale.note,
-      };
-      const newInventory = b.inventory.map((i) =>
-        i.id === sale.itemId ? { ...i, qty: i.qty - sale.qty, sold: i.sold + sale.qty } : i
-      );
       return { ...b, sales: [newSale, ...b.sales], inventory: newInventory };
     }));
     showToast("Sale recorded!");
@@ -303,11 +331,11 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar };
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
-  if (!onboardingComplete) return <Onboarding ctx={ctx} />;
+  if (!onboardingComplete) return <Onboarding ctx={ctx} deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />;
   if (isPinEnabled && !isUnlocked) return <PinLock ctx={ctx} onUnlock={() => setIsUnlocked(true)} />;
 
   return (
@@ -329,8 +357,9 @@ export default function BizTrack() {
         {modal === "addItem" && <AddItemModal ctx={ctx} />}
         {modal === "restock" && <RestockModal ctx={ctx} />}
         {modal === "addSale" && <AddSaleModal ctx={ctx} />}
-        {modal === "deleteBiz" && <DeleteBizModal ctx={ctx} />}
-        {modal === "toast" && <Toast msg={toast} />}
+        {modal === "pin-setup" && <PinSetupModal ctx={ctx} />}
+        {modal === "delete-biz" && <DeleteBizModal ctx={ctx} />}
+        {toast && <Toast msg={toast} />}
       </div>
     </div>
   );
@@ -427,7 +456,8 @@ function HomeScreen({ ctx }) {
           );
         })}
       </div>
-      <div style={{ height: 16 }} />
+      <div style={{ height: 40 }} />
+      <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5 }}>BizTrack v1.4.1 • Build 2026.05.08</p>
     </div>
   );
 }
@@ -445,7 +475,7 @@ function BusinessScreen({ ctx }) {
           <span style={{ fontSize: 18 }}>{activeBiz.emoji}</span>
           <span style={S.bizHeaderName}>{activeBiz.name}</span>
         </div>
-        <button style={S.iconBtn} onClick={() => setModal("deleteBiz")}><Trash2 size={20} color="#2C1810" /></button>
+        <button style={S.iconBtn} onClick={() => setModal("delete-biz")}><Trash2 size={20} color="#2C1810" /></button>
       </div>
 
       {/* HERO */}
@@ -534,8 +564,11 @@ function OverviewTab({ biz, stats, lowStockThreshold, setModal }) {
           {recentSales.map((s) => (
             <div key={s.id} style={S.saleRow}>
               <div>
-                <p style={S.saleName}>{s.itemName}</p>
-                <p style={S.saleSub}>{s.qty} units · {dateLabel(s.date)}</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <p style={S.saleName}>{s.itemName}</p>
+                  {s.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
+                </div>
+                <p style={S.saleSub}>{s.qty} {s.qty > 1 ? "units" : "unit"} · {dateLabel(s.date)}</p>
               </div>
               <div style={{ textAlign: "right" }}>
                 <p style={S.saleRev}>{fmt(s.revenue)}</p>
@@ -614,8 +647,11 @@ function SalesTab({ biz, setModal }) {
       {biz.sales.map((sale) => (
         <div key={sale.id} style={S.saleRow}>
           <div>
-            <p style={S.saleName}>{sale.itemName}</p>
-            <p style={S.saleSub}>{sale.qty} units · {dateLabel(sale.date)}{sale.note ? ` · ${sale.note}` : ""}</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <p style={S.saleName}>{sale.itemName}</p>
+              {sale.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
+            </div>
+            <p style={S.saleSub}>{sale.qty} {sale.qty > 1 ? "units" : "unit"} · {dateLabel(sale.date)}{sale.note ? ` · ${sale.note}` : ""}</p>
           </div>
           <div style={{ textAlign: "right" }}>
             <p style={S.saleRev}>{fmt(sale.revenue)}</p>
@@ -1064,93 +1100,234 @@ function RestockModal({ ctx }) {
 
 function AddSaleModal({ ctx }) {
   const { setModal, activeBiz, addSale } = ctx;
+  const [tab, setTab] = useState("inventory"); // "inventory" | "custom"
   const [itemId, setItemId] = useState(activeBiz?.inventory[0]?.id || "");
-  const [qty, setQty] = useState("");
+  const [qty, setQty] = useState("1");
   const [actualPrice, setActualPrice] = useState("");
   const [note, setNote] = useState("");
+  
+  // Custom sale fields
+  const [manualName, setManualName] = useState("");
+  const [materialCost, setMaterialCost] = useState("");
+  const [laborCost, setLaborCost] = useState("");
 
   const selectedItem = activeBiz?.inventory.find((i) => i.id === Number(itemId));
 
-  // when item changes, pre-fill actual price with the asking price
   const handleItemChange = (e) => {
     setItemId(e.target.value);
     const item = activeBiz?.inventory.find((i) => i.id === Number(e.target.value));
     if (item) setActualPrice(String(item.price));
   };
 
-  // pre-fill on first render
-  useState(() => {
-    if (selectedItem) setActualPrice(String(selectedItem.price));
-  });
+  useEffect(() => {
+    if (tab === "inventory" && selectedItem && !actualPrice) {
+      setActualPrice(String(selectedItem.price));
+    }
+  }, [tab, selectedItem]);
 
-  const soldBelow = selectedItem && actualPrice && Number(actualPrice) < selectedItem.price;
-  const soldAbove = selectedItem && actualPrice && Number(actualPrice) > selectedItem.price;
+  const soldBelow = tab === "inventory" && selectedItem && actualPrice && Number(actualPrice) < selectedItem.price;
+  const soldAbove = tab === "inventory" && selectedItem && actualPrice && Number(actualPrice) > selectedItem.price;
 
-  const preview = selectedItem && qty && actualPrice ? {
-    revenue: Number(actualPrice) * Number(qty),
-    profit: (Number(actualPrice) - selectedItem.cost) * Number(qty),
-    discount: soldBelow ? (selectedItem.price - Number(actualPrice)) * Number(qty) : 0,
-  } : null;
+  const totalManualCost = Number(materialCost || 0) + Number(laborCost || 0);
+
+  const preview = tab === "inventory" 
+    ? (selectedItem && qty && actualPrice ? {
+        revenue: Number(actualPrice) * Number(qty),
+        profit: (Number(actualPrice) - selectedItem.cost) * Number(qty),
+        discount: soldBelow ? (selectedItem.price - Number(actualPrice)) * Number(qty) : 0,
+      } : null)
+    : (manualName && actualPrice ? {
+        revenue: Number(actualPrice) * Number(qty || 1),
+        profit: (Number(actualPrice) - totalManualCost) * Number(qty || 1),
+        discount: 0
+      } : null);
 
   const submit = () => {
-    if (!itemId || !qty || !actualPrice) return;
-    if (selectedItem && Number(qty) > selectedItem.qty) {
-      alert(`Only ${selectedItem.qty} units available in stock.`);
-      return;
+    if (tab === "inventory") {
+      if (!itemId || !qty || !actualPrice) return;
+      addSale(activeBiz.id, { itemId: Number(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note, isCustom: false });
+    } else {
+      if (!manualName || !actualPrice) return;
+      addSale(activeBiz.id, { 
+        isCustom: true, 
+        manualName, 
+        manualCost: totalManualCost, 
+        actualPrice: Number(actualPrice), 
+        qty: Number(qty) || 1, 
+        note 
+      });
     }
-    addSale(activeBiz.id, { itemId: Number(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note });
     setModal(null);
   };
 
   return (
     <ModalShell onClose={() => setModal(null)} title="Record Sale">
       <div style={S.modalBody}>
-        {activeBiz?.inventory.length === 0 ? (
-          <div style={S.emptyState}>
-            <p style={S.emptyIcon}>📦</p>
-            <p style={S.emptyTitle}>No items in inventory</p>
-            <p style={S.emptySub}>Add inventory items first before recording a sale</p>
-          </div>
-        ) : (
-          <>
-            <p style={S.fieldLabel}>Select Item</p>
-            <select style={S.input} value={itemId} onChange={handleItemChange}>
-              {activeBiz.inventory.map((i) => (
-                <option key={i.id} value={i.id}>{i.name} ({i.qty} in stock)</option>
-              ))}
-            </select>
+        {/* TAB SWITCHER */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20, background: "var(--border-color)", padding: 4, borderRadius: 12 }}>
+          <button 
+            style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", background: tab === "inventory" ? "var(--bg-primary)" : "transparent", color: tab === "inventory" ? "var(--text-primary)" : "var(--text-secondary)" }}
+            onClick={() => setTab("inventory")}
+          >From Inventory</button>
+          <button 
+            style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", background: tab === "custom" ? "var(--bg-primary)" : "transparent", color: tab === "custom" ? "var(--text-primary)" : "var(--text-secondary)" }}
+            onClick={() => setTab("custom")}
+          >Custom Entry</button>
+        </div>
 
-            <p style={S.fieldLabel}>Quantity Sold</p>
-            <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 2" />
-
-            <div>
+        {tab === "inventory" ? (
+          activeBiz?.inventory.length === 0 ? (
+            <div style={S.emptyState}>
+              <div style={S.emptyIcon}><Package size={40} color="#2C1810" strokeWidth={1.5} /></div>
+              <p style={S.emptyTitle}>No items in inventory</p>
+              <p style={S.emptySub}>Switch to "Custom Entry" or add items first.</p>
+            </div>
+          ) : (
+            <>
+              <p style={S.fieldLabel}>Select Item</p>
+              <select style={S.input} value={itemId} onChange={handleItemChange}>
+                {activeBiz.inventory.map((i) => (
+                  <option key={i.id} value={i.id}>{i.name} ({i.qty} in stock)</option>
+                ))}
+              </select>
+              
+              <p style={S.fieldLabel}>Quantity Sold</p>
+              <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" />
+              
               <p style={S.fieldLabel}>Actual Selling Price (XAF)</p>
-              <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "-4px 0 6px", fontWeight: 500 }}>
-                Asking price: {selectedItem ? fmt(selectedItem.price) : "—"} · Change if you sold for less or more
-              </p>
               <input
                 style={{ ...S.input, borderColor: soldBelow ? "#E67E22" : soldAbove ? "#3A7D2C" : "#E0D6C8" }}
                 type="number"
                 value={actualPrice}
                 onChange={(e) => setActualPrice(e.target.value)}
-                placeholder="e.g. 4500"
+                placeholder="Price paid by customer"
               />
-              {soldBelow && <p style={{ fontSize: 12, color: "#E67E22", margin: "4px 0 0", fontWeight: 600 }}>⬇ Sold below asking price</p>}
-              {soldAbove && <p style={{ fontSize: 12, color: "#3A7D2C", margin: "4px 0 0", fontWeight: 600 }}>⬆ Sold above asking price</p>}
-            </div>
-
-            <p style={S.fieldLabel}>Note (optional)</p>
-            <input style={S.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Sold to Amina" />
-
-            {preview && (
-              <div style={S.calcPreview}>
-                <p style={S.calcLabel}>Revenue: <strong>{fmt(preview.revenue)}</strong></p>
-                <p style={S.calcLabel}>Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
-                {preview.discount > 0 && <p style={S.calcLabel}>Discount given: <strong style={{ color: "#E67E22" }}>{fmt(preview.discount)}</strong></p>}
+              
+              {preview && (
+                <div style={S.calcPreview}>
+                  <p style={S.calcLabel}>Revenue: <strong>{fmt(preview.revenue)}</strong></p>
+                  <p style={S.calcLabel}>Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
+                </div>
+              )}
+            </>
+          )
+        ) : (
+          <>
+            <p style={S.fieldLabel}>Custom Item Name</p>
+            <input style={S.input} value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="e.g. Custom Crochet Beanie" />
+            
+            <p style={S.fieldLabel}>Price Paid by Customer (XAF)</p>
+            <input style={S.input} type="number" value={actualPrice} onChange={(e) => setActualPrice(e.target.value)} placeholder="0" />
+            
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <p style={S.fieldLabel}>Base Cost (Yarn+Transport)</p>
+                <input style={S.input} type="number" value={materialCost} onChange={(e) => setMaterialCost(e.target.value)} placeholder="0" />
               </div>
+              <div style={{ flex: 1 }}>
+                <p style={S.fieldLabel}>Labor Cost</p>
+                <input style={S.input} type="number" value={laborCost} onChange={(e) => setLaborCost(e.target.value)} placeholder="0" />
+              </div>
+            </div>
+            
+            {totalManualCost > 0 && (
+               <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: -8, textAlign: "right" }}>
+                 Total cost: {fmt(totalManualCost)}
+               </p>
             )}
+          </>
+        )}
 
-            <button style={S.primaryBtn} onClick={submit}>Record Sale</button>
+        <p style={S.fieldLabel}>Note (optional)</p>
+        <input style={S.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Order from Instagram" />
+
+        {preview && (
+          <div style={S.calcPreview}>
+            <p style={S.calcLabel}>Total Revenue: <strong>{fmt(preview.revenue)}</strong></p>
+            <p style={S.calcLabel}>Net Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
+          </div>
+        )}
+
+        <button style={S.primaryBtn} onClick={submit} disabled={tab === "inventory" && activeBiz?.inventory.length === 0}>Record Sale</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function PinSetupModal({ ctx }) {
+  const { setModal, setHashedPin, setHashedRecoveryKey, setIsPinEnabled, showToast } = ctx;
+  const [step, setStep] = useState(1); // 1: set, 2: confirm, 3: recovery
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [recoveryKey, setRecoveryKey] = useState("");
+
+  const handleNext = async () => {
+    if (step === 1) {
+      if (pin.length !== 4) return alert("PIN must be 4 digits.");
+      setStep(2);
+    } else if (step === 2) {
+      if (pin !== confirmPin) return alert("PINs do not match.");
+      const key = genRecoveryKey();
+      setRecoveryKey(key);
+      
+      const hash = await hashPin(pin);
+      const keyHash = await hashPin(key.replace("-", ""));
+      
+      setHashedPin(hash);
+      setHashedRecoveryKey(keyHash);
+      setIsPinEnabled(true);
+      setStep(3);
+    } else {
+      setModal(null);
+      showToast("Security enabled!");
+    }
+  };
+
+  return (
+    <ModalShell onClose={() => setModal(null)} title="Security Setup">
+      <div style={{ ...S.modalBody, alignItems: "center", textAlign: "center" }}>
+        {step === 1 && (
+          <>
+            <Lock size={48} color="var(--accent-color)" style={{ marginBottom: 20 }} />
+            <h3 style={{ margin: "0 0 8px" }}>Create a PIN</h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>Choose a 4-digit code to protect your data.</p>
+            <input 
+              style={{ ...S.input, textAlign: "center", fontSize: 24, letterSpacing: 8 }} 
+              value={pin} 
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="0000"
+              type="tel"
+              autoFocus
+            />
+            <button style={{ ...S.primaryBtn, marginTop: 24 }} onClick={handleNext}>Next</button>
+          </>
+        )}
+        {step === 2 && (
+          <>
+            <Shield size={48} color="var(--accent-color)" style={{ marginBottom: 20 }} />
+            <h3 style={{ margin: "0 0 8px" }}>Confirm PIN</h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>Enter your PIN one more time.</p>
+            <input 
+              style={{ ...S.input, textAlign: "center", fontSize: 24, letterSpacing: 8 }} 
+              value={confirmPin} 
+              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="0000"
+              type="tel"
+              autoFocus
+            />
+            <button style={{ ...S.primaryBtn, marginTop: 24 }} onClick={handleNext}>Confirm</button>
+          </>
+        )}
+        {step === 3 && (
+          <>
+            <Award size={48} color="#D4AF37" style={{ marginBottom: 20 }} />
+            <h3 style={{ margin: "0 0 8px" }}>Save Recovery Key</h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>If you forget your PIN, you will need this key to unlock your data.</p>
+            <div style={{ background: "#FDF9F3", border: "2px dashed #D4B896", borderRadius: 16, padding: "20px 30px", marginBottom: 24 }}>
+              <span style={{ fontSize: 24, fontWeight: 800, color: "#2C1810", letterSpacing: 2, fontFamily: "monospace" }}>{recoveryKey}</span>
+            </div>
+            <p style={{ fontSize: 11, color: "#C0392B", fontWeight: 600, marginBottom: 24 }}>⚠️ Screenshot this or write it down. It cannot be recovered!</p>
+            <button style={S.primaryBtn} onClick={handleNext}>Finish Setup</button>
           </>
         )}
       </div>
@@ -1210,28 +1387,45 @@ function BottomNav({ ctx }) {
 
 
 /* ─── ONBOARDING ───────────────────────────────────────────────────────────── */
-function Onboarding({ ctx }) {
-  const { userName, userEmail, setUserName, setUserEmail, setOnboardingComplete } = ctx;
+function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
+  const { businesses, setBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold } = ctx;
   const [step, setStep] = useState(0);
+  const [showImport, setShowImport] = useState(false);
+  const [importData, setImportData] = useState("");
   
-  // Initialize from store if data exists (and isn't the default)
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
   const initialName = userName !== "Business Owner" ? userName : "";
   const [name, setName] = useState(initialName);
   const [email, setEmail] = useState(userEmail || "");
 
-  const hasStarted = initialName.length > 0;
+  const hasStarted = businesses.length > 0 || initialName.length > 0;
 
   const next = () => {
-    if (step === 1 && name.trim()) {
-      setUserName(name.trim());
-    }
-    if (step === 2 && email.trim()) {
-      setUserEmail(email.trim());
-    }
-    if (step === 3) {
-      setOnboardingComplete(true);
-    } else {
-      setStep(step + 1);
+    if (step === 1 && name.trim()) { setUserName(name.trim()); }
+    if (step === 2 && email.trim()) { setUserEmail(email.trim()); }
+    if (step === 3) { setOnboardingComplete(true); } 
+    else { setStep(step + 1); }
+  };
+
+  const handleExport = () => {
+    const data = { businesses, userName, userEmail, currency, lowStockThreshold };
+    navigator.clipboard.writeText(JSON.stringify(data));
+    alert("Data copied to clipboard! Now open the Installed App and paste it there.");
+  };
+
+  const handleImport = () => {
+    try {
+      const data = JSON.parse(importData);
+      if (data.businesses) setBusinesses(data.businesses);
+      if (data.userName) setUserName(data.userName);
+      if (data.userEmail) setUserEmail(data.userEmail);
+      if (data.currency) setCurrency(data.currency);
+      if (data.lowStockThreshold) setLowStockThreshold(data.lowStockThreshold);
+      alert("Data imported successfully!");
+      setShowImport(false);
+    } catch (e) {
+      alert("Invalid backup code.");
     }
   };
 
@@ -1241,28 +1435,55 @@ function Onboarding({ ctx }) {
         {step === 0 && (
           <div style={{ animation: "fadeIn 0.8s ease" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 32, position: "relative" }}>
-                <div style={{ position: "absolute", width: 140, height: 140, background: "rgba(193, 127, 90, 0.15)", filter: "blur(30px)", borderRadius: "50%" }} />
-                <img src="/avatar-1-coin.svg" style={{ width: 140, height: 140, position: "relative", zIndex: 1 }} />
-              </div>
+               <TrendingUp size={64} color="#D4B896" />
             </div>
             <h1 style={{ ...S.userName, color: "var(--bg-primary)", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
-            <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16 }}>Your all-in-one business growth companion.</p>
+            <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16, marginBottom: 32 }}>Your all-in-one business growth companion.</p>
             
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 40 }}>
+            {!isStandalone && (
+              <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 20, padding: 20, border: "1px solid rgba(255,255,255,0.1)", marginBottom: 32 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#D4B896", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Download size={16} /> Important: Install First
+                </p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", lineHeight: 1.4, marginBottom: 16 }}>
+                  To avoid data loss when switching to the app later, please <strong>Add to Home Screen</strong> now.
+                </p>
+                <InstallPrompt deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)" }} onClick={next}>
                 {hasStarted ? "Continue Setup" : "Get Started"}
               </button>
-              
-              {hasStarted && (
+
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <button 
-                  style={{ ...S.ghostBtn, borderColor: "rgba(255,255,255,0.3)", color: "var(--bg-primary)" }} 
-                  onClick={() => setOnboardingComplete(true)}
-                >
-                  Skip to Dashboard
-                </button>
-              )}
+                  style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
+                  onClick={handleExport}
+                >Export Data</button>
+                <button 
+                  style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
+                  onClick={() => setShowImport(true)}
+                >Import Data</button>
+              </div>
             </div>
+
+            {showImport && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                <div style={{ background: "var(--bg-primary)", borderRadius: 24, padding: 24, width: "100%", maxWidth: 400 }}>
+                  <h3 style={{ color: "var(--text-primary)", marginBottom: 12 }}>Import Backup</h3>
+                  <textarea 
+                    style={{ ...S.input, height: 120, fontSize: 12, paddingTop: 12 }} 
+                    placeholder="Paste your backup code here..." 
+                    value={importData}
+                    onChange={(e) => setImportData(e.target.value)}
+                  />
+                  <button style={{ ...S.primaryBtn, marginTop: 16 }} onClick={handleImport}>Restore Data</button>
+                  <button style={{ ...S.ghostBtn, marginTop: 8, border: "none" }} onClick={() => setShowImport(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {step === 1 && (
@@ -1290,7 +1511,13 @@ function Onboarding({ ctx }) {
               type="email"
               autoFocus
             />
-            <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 24 }} onClick={next}>Continue</button>
+            <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 24 }} onClick={() => {
+              if (email.trim() && !validateEmail(email)) {
+                alert("Please enter a valid email address.");
+                return;
+              }
+              next();
+            }}>Continue</button>
           </div>
         )}
         {step === 3 && (
@@ -1305,6 +1532,7 @@ function Onboarding({ ctx }) {
           </div>
         )}
       </div>
+      <p style={{ position: "absolute", bottom: 20, left: 0, right: 0, textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.4)", pointerEvents: "none" }}>BizTrack v1.4.1 • Build 2026.05.08</p>
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
@@ -1662,6 +1890,11 @@ function AccountScreen({ ctx }) {
                    style={S.settingsInput} 
                    value={userEmail} 
                    onChange={(e) => setUserEmail(e.target.value)}
+                   onBlur={() => {
+                     if (userEmail && !validateEmail(userEmail)) {
+                       alert("Invalid email format. Please correct it.");
+                     }
+                   }}
                    placeholder="Enter your email"
                  />
                </div>
@@ -1670,6 +1903,44 @@ function AccountScreen({ ctx }) {
         </div>
 
         
+        {/* DATA MANAGEMENT */}
+        <div style={S.settingsSection}>
+          <p style={S.settingsSectionTitle}>Data Management</p>
+          <div style={S.settingsCard}>
+             <div style={S.settingsRow} onClick={() => {
+               const data = { businesses, userName, userEmail: ctx.userEmail, currency: ctx.currency, lowStockThreshold: ctx.lowStockThreshold };
+               navigator.clipboard.writeText(JSON.stringify(data));
+               showToast("Data copied to clipboard!");
+             }}>
+               <Download size={20} color="#3A7D2C" />
+               <div style={{ flex: 1 }}>
+                 <p style={S.settingsRowLabel}>Backup Data</p>
+                 <p style={S.settingsRowSub}>Copy your data to move to another device.</p>
+               </div>
+             </div>
+             <div style={S.settingsDivider} />
+             <div style={S.settingsRow} onClick={() => {
+               const code = prompt("Paste your backup code here:");
+               if (!code) return;
+               try {
+                 const data = JSON.parse(code);
+                 if (data.businesses) ctx.setBusinesses(data.businesses);
+                 if (data.userName) ctx.setUserName(data.userName);
+                 if (data.userEmail) ctx.setUserEmail(data.userEmail);
+                 showToast("Data restored!");
+               } catch (e) {
+                 alert("Invalid backup code.");
+               }
+             }}>
+               <Upload size={20} color="#8B6914" />
+               <div style={{ flex: 1 }}>
+                 <p style={S.settingsRowLabel}>Restore Data</p>
+                 <p style={S.settingsRowSub}>Import data from a backup code.</p>
+               </div>
+             </div>
+          </div>
+        </div>
+
         {/* SECURITY */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Security</p>
@@ -1677,27 +1948,13 @@ function AccountScreen({ ctx }) {
             <div style={S.settingsRow} onClick={async () => {
               if (isPinEnabled) {
                 if (confirm("Disable passcode lock? This will also remove your recovery key.")) {
-                  useStore.getState().setIsPinEnabled(false);
-                  useStore.getState().setHashedPin(null);
-                  useStore.getState().setHashedRecoveryKey(null);
+                  ctx.setIsPinEnabled(false);
+                  ctx.setHashedPin(null);
+                  ctx.setHashedRecoveryKey(null);
                   showToast("PIN disabled");
                 }
               } else {
-                const newPin = prompt("Enter a new 4-digit PIN:");
-                if (newPin && newPin.length === 4 && /\d{4}/.test(newPin)) {
-                  const key = genRecoveryKey();
-                  alert(`IMPORTANT: Your Recovery Key is ${key}\n\nWrite this down! If you forget your PIN, you will need this key to unlock your business data.`);
-                  
-                  const hash = await hashPin(newPin);
-                  const keyHash = await hashPin(key.replace("-", ""));
-                  
-                  useStore.getState().setHashedPin(hash);
-                  useStore.getState().setHashedRecoveryKey(keyHash);
-                  useStore.getState().setIsPinEnabled(true);
-                  showToast("PIN enabled!");
-                } else if (newPin) {
-                  alert("Invalid PIN. Must be 4 digits.");
-                }
+                setModal("pin-setup");
               }
             }}>
               <Lock size={20} color="#9B7B5E" />
@@ -1752,6 +2009,7 @@ function AccountScreen({ ctx }) {
 
         
         <div style={{ height: 40 }} />
+        <p style={{ textAlign: "center", fontSize: 10, color: "var(--text-secondary)", opacity: 0.5, marginBottom: 20 }}>BizTrack v1.4.1 • Build 2026.05.08</p>
       </div>
     </div>
   );
