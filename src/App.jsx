@@ -48,6 +48,15 @@ const dateLabel = (d) => {
 };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+/* ─── SECURITY HELPERS ─────────────────────────────────────────────────────── */
+const hashPin = async (pin) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pin);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+};
+
 /* ─── ROOT ─────────────────────────────────────────────────────────────────── */
 
 /* ─── INSTALL PROMPT ────────────────────────────────────────────────────────── */
@@ -196,10 +205,16 @@ export default function BizTrack() {
   };
 
   const addSale = (bizId, sale) => {
+    const biz = businesses.find(b => b.id === bizId);
+    if (!biz) return;
+    const item = biz.inventory.find(i => i.id === sale.itemId);
+    if (!item || item.qty < sale.qty) {
+      showToast(`Not enough stock for ${item?.name || "item"}`);
+      return;
+    }
+
     setBusinesses(businesses.map((b) => {
       if (b.id !== bizId) return b;
-      const item = b.inventory.find((i) => i.id === sale.itemId);
-      if (!item) return b;
       const actualPrice = sale.actualPrice; // real price she sold it for
       const newSale = {
         id: uid(),
@@ -214,7 +229,7 @@ export default function BizTrack() {
         note: sale.note,
       };
       const newInventory = b.inventory.map((i) =>
-        i.id === sale.itemId ? { ...i, qty: Math.max(0, i.qty - sale.qty), sold: i.sold + sale.qty } : i
+        i.id === sale.itemId ? { ...i, qty: i.qty - sale.qty, sold: i.sold + sale.qty } : i
       );
       return { ...b, sales: [newSale, ...b.sales], inventory: newInventory };
     }));
@@ -226,13 +241,19 @@ export default function BizTrack() {
   const hasSeenGuide = useStore(s => s.hasSeenGuide);
   const setHasSeenGuide = useStore(s => s.setHasSeenGuide);
   const isPinEnabled = useStore(s => s.isPinEnabled);
-  const pin = useStore(s => s.pin);
 
   const userEmail = useStore(s => s.userEmail);
   const setUserEmail = useStore(s => s.setUserEmail);
   const userAvatar = useStore(s => s.userAvatar);
   const setUserAvatar = useStore(s => s.setUserAvatar);
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, pin, userEmail, setUserEmail, userAvatar, setUserAvatar };
+  const hashedPin = useStore(s => s.hashedPin);
+  const setHashedPin = useStore(s => s.setHashedPin);
+  const loginAttempts = useStore(s => s.loginAttempts);
+  const setLoginAttempts = useStore(s => s.setLoginAttempts);
+  const lockoutUntil = useStore(s => s.lockoutUntil);
+  const setLockoutUntil = useStore(s => s.setLockoutUntil);
+
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -761,7 +782,27 @@ function SettingsScreen({ ctx }) {
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Data</p>
           <div style={S.settingsCard}>
-            <div style={S.settingsRow} onClick={() => showToast("Export coming in v2!")}>
+            <div style={S.settingsRow} onClick={() => {
+              if (businesses.length === 0) {
+                showToast("No data to export!");
+                return;
+              }
+              const rows = [["Business", "Item", "Qty Sold", "Revenue", "Cost", "Profit", "Date", "Note"]];
+              businesses.forEach(b => {
+                b.sales.forEach(s => {
+                  rows.push([b.name, s.itemName, s.qty, s.revenue, s.cost, s.revenue - s.cost, s.date, s.note || ""]);
+                });
+              });
+              const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+              const encodedUri = encodeURI(csvContent);
+              const link = document.createElement("a");
+              link.setAttribute("href", encodedUri);
+              link.setAttribute("download", `biztrack_export_${new Date().toISOString().slice(0,10)}.csv`);
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              showToast("Exported to CSV!");
+            }}>
               <Upload size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Export as CSV</p>
@@ -1003,6 +1044,10 @@ function AddSaleModal({ ctx }) {
 
   const submit = () => {
     if (!itemId || !qty || !actualPrice) return;
+    if (selectedItem && Number(qty) > selectedItem.qty) {
+      alert(`Only ${selectedItem.qty} units available in stock.`);
+      return;
+    }
     addSale(activeBiz.id, { itemId: Number(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note });
     setModal(null);
   };
@@ -1116,11 +1161,15 @@ function BottomNav({ ctx }) {
 
 /* ─── ONBOARDING ───────────────────────────────────────────────────────────── */
 function Onboarding({ ctx }) {
+  const { userName, userEmail, setUserName, setUserEmail, setOnboardingComplete } = ctx;
   const [step, setStep] = useState(0);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const { setUserName, setUserEmail, setOnboardingComplete, addBusiness } = ctx;
+  
+  // Initialize from store if data exists (and isn't the default)
+  const initialName = userName !== "Business Owner" ? userName : "";
+  const [name, setName] = useState(initialName);
+  const [email, setEmail] = useState(userEmail || "");
 
+  const hasStarted = initialName.length > 0;
 
   const next = () => {
     if (step === 1 && name.trim()) {
@@ -1143,13 +1192,27 @@ function Onboarding({ ctx }) {
           <div style={{ animation: "fadeIn 0.8s ease" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 32, position: "relative" }}>
-              <div style={{ position: "absolute", width: 140, height: 140, background: "rgba(193, 127, 90, 0.15)", filter: "blur(30px)", borderRadius: "50%" }} />
-              <img src="/avatar-1-coin.svg" style={{ width: 140, height: 140, position: "relative", zIndex: 1 }} />
-            </div>
+                <div style={{ position: "absolute", width: 140, height: 140, background: "rgba(193, 127, 90, 0.15)", filter: "blur(30px)", borderRadius: "50%" }} />
+                <img src="/avatar-1-coin.svg" style={{ width: 140, height: 140, position: "relative", zIndex: 1 }} />
+              </div>
             </div>
             <h1 style={{ ...S.userName, color: "var(--bg-primary)", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16 }}>Your all-in-one business growth companion.</p>
-            <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)", marginTop: 40 }} onClick={next}>Get Started</button>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 40 }}>
+              <button style={{ ...S.primaryBtn, background: "var(--bg-primary)", color: "var(--text-primary)" }} onClick={next}>
+                {hasStarted ? "Continue Setup" : "Get Started"}
+              </button>
+              
+              {hasStarted && (
+                <button 
+                  style={{ ...S.ghostBtn, borderColor: "rgba(255,255,255,0.3)", color: "var(--bg-primary)" }} 
+                  onClick={() => setOnboardingComplete(true)}
+                >
+                  Skip to Dashboard
+                </button>
+              )}
+            </div>
           </div>
         )}
         {step === 1 && (
@@ -1182,7 +1245,7 @@ function Onboarding({ ctx }) {
         )}
         {step === 3 && (
           <div style={{ animation: "fadeIn 0.5s ease" }}>
-            <h2 style={{ ...S.sectionLabel, color: "var(--bg-primary)", fontSize: 24, marginBottom: 12 }}>All set, {name}!</h2>
+            <h2 style={{ ...S.sectionLabel, color: "var(--bg-primary)", fontSize: 24, marginBottom: 12 }}>All set, {name || initialName}!</h2>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 32 }}>Let's start by adding your first business on the home screen.</p>
             <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 20, padding: 30, border: "1.5px dashed rgba(255,255,255,0.2)" }}>
                <Store size={48} color="rgba(255,255,255,0.3)" style={{ marginBottom: 12 }} />
@@ -1202,15 +1265,43 @@ function Onboarding({ ctx }) {
 /* ─── SECURITY ─────────────────────────────────────────────────────────────── */
 function PinLock({ ctx, onUnlock }) {
   const [input, setInput] = useState("");
-  const { pin, userName, userAvatar } = ctx;
+  const { hashedPin, userName, userAvatar, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil } = ctx;
 
-  const press = (n) => {
-    if (input.length < 4) {
-      const newVal = input + n;
-      setInput(newVal);
-      if (newVal === pin) {
+  const isLockedOut = lockoutUntil && new Date(lockoutUntil) > new Date();
+  const secondsLeft = isLockedOut ? Math.ceil((new Date(lockoutUntil) - new Date()) / 1000) : 0;
+
+  useEffect(() => {
+    if (isLockedOut) {
+      const timer = setInterval(() => {
+        if (new Date(lockoutUntil) <= new Date()) {
+          setLockoutUntil(null);
+          setLoginAttempts(0);
+          clearInterval(timer);
+        }
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [isLockedOut, lockoutUntil]);
+
+  const press = async (n) => {
+    if (isLockedOut || input.length >= 4) return;
+    
+    const newVal = input + n;
+    setInput(newVal);
+    
+    if (newVal.length === 4) {
+      const hash = await hashPin(newVal);
+      if (hash === hashedPin) {
+        setLoginAttempts(0);
+        setLockoutUntil(null);
         setTimeout(onUnlock, 200);
-      } else if (newVal.length === 4) {
+      } else {
+        const nextAttempts = loginAttempts + 1;
+        setLoginAttempts(nextAttempts);
+        if (nextAttempts >= 5) {
+          const lockoutTime = new Date(Date.now() + 30000).toISOString();
+          setLockoutUntil(lockoutTime);
+        }
         setTimeout(() => setInput(""), 500);
       }
     }
@@ -1221,21 +1312,21 @@ function PinLock({ ctx, onUnlock }) {
       <div style={{ ...S.phone, padding: 40, alignItems: "center", justifyContent: "center" }}>
         <div style={{ ...S.avatar, width: 64, height: 64, fontSize: 28, marginBottom: 16 }}>{userAvatar?.startsWith('/') ? <img src={userAvatar} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} /> : (userAvatar || (userName || "B")[0])}</div>
         <h2 style={{ ...S.userName, marginBottom: 8 }}>Welcome back</h2>
-        <p style={{ ...S.greeting, marginBottom: 40 }}>Enter PIN to unlock</p>
+        <p style={{ ...S.greeting, marginBottom: 40 }}>{isLockedOut ? `Locked out for ${secondsLeft}s` : "Enter PIN to unlock"}</p>
         
         <div style={{ display: "flex", gap: 16, marginBottom: 40 }}>
           {[0,1,2,3].map(i => (
-            <div key={i} style={{ width: 16, height: 16, borderRadius: "50%", background: input.length > i ? "#2C1810" : "#E0D6C8" }} />
+            <div key={i} style={{ width: 16, height: 16, borderRadius: "50%", background: input.length > i ? "#2C1810" : "#E0D6C8", border: isLockedOut ? "1px solid #C0392B" : "none" }} />
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20, opacity: isLockedOut ? 0.3 : 1 }}>
           {[1,2,3,4,5,6,7,8,9].map(n => (
-            <button key={n} style={S.numKey} onClick={() => press(n)}>{n}</button>
+            <button key={n} style={S.numKey} onClick={() => press(n)} disabled={isLockedOut}>{n}</button>
           ))}
           <div />
-          <button style={S.numKey} onClick={() => press(0)}>0</button>
-          <button style={{ ...S.numKey, fontSize: 14 }} onClick={() => setInput("")}>Clear</button>
+          <button style={S.numKey} onClick={() => press(0)} disabled={isLockedOut}>0</button>
+          <button style={{ ...S.numKey, fontSize: 14 }} onClick={() => setInput("")} disabled={isLockedOut}>Clear</button>
         </div>
       </div>
     </div>
@@ -1351,25 +1442,38 @@ function AccountScreen({ ctx }) {
         {/* PREMIUM AVATAR PICKER */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Choose Persona</p>
-          <div style={{ display: "flex", gap: 20, overflowX: "auto", padding: "8px 0 16px", scrollbarWidth: "none" }}>
+          <div style={{ 
+            display: "flex", 
+            gap: 16, 
+            overflowX: "auto", 
+            padding: "8px 4px 20px", 
+            WebkitOverflowScrolling: "touch",
+            scrollbarWidth: "thin",
+            msOverflowStyle: "auto"
+          }}>
             {["/avatars/avatar1.png", "/avatars/avatar2.png", "/avatars/avatar3.png", "/avatars/avatar4.png", "/avatars/avatar5.png"].map(a => (
               <button 
                 key={a}
-                onClick={() => setUserAvatar(a)}
+                onClick={() => {
+                  setUserAvatar(a);
+                  showToast("Persona updated!");
+                }}
                 style={{ 
                   ...S.avatar, 
-                  width: 64, 
-                  height: 64, 
+                  width: 72, 
+                  height: 72, 
                   flexShrink: 0,
-                  padding: 0,
+                  padding: 4,
                   overflow: "hidden",
-                  border: userAvatar === a ? "3px solid #C17F5A" : "3px solid transparent",
-                  background: "var(--card-bg)",
-                  boxShadow: userAvatar === a ? "0 8px 20px rgba(193,127,90,0.4)" : "0 4px 12px rgba(0,0,0,0.1)",
-                  transition: "0.3s transform"
+                  border: userAvatar === a ? "3px solid #C17F5A" : "3px solid rgba(155, 123, 94, 0.1)",
+                  background: userAvatar === a ? "rgba(193, 127, 90, 0.1)" : "var(--card-bg)",
+                  boxShadow: userAvatar === a ? "0 8px 20px rgba(193,127,90,0.3)" : "0 2px 8px rgba(0,0,0,0.05)",
+                  transition: "0.2s all ease-in-out",
+                  cursor: "pointer",
+                  borderRadius: "50%"
                 }}
               >
-                <img src={a} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src={a} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
               </button>
             ))}
           </div>
@@ -1410,15 +1514,16 @@ function AccountScreen({ ctx }) {
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Security</p>
           <div style={S.settingsCard}>
-            <div style={S.settingsRow} onClick={() => {
+            <div style={S.settingsRow} onClick={async () => {
               if (isPinEnabled) {
                 useStore.getState().setIsPinEnabled(false);
-                useStore.getState().setPin(null);
+                useStore.getState().setHashedPin(null);
                 showToast("PIN disabled");
               } else {
                 const newPin = prompt("Enter a 4-digit PIN:");
                 if (newPin && newPin.length === 4 && /\d{4}/.test(newPin)) {
-                  useStore.getState().setPin(newPin);
+                  const hash = await hashPin(newPin);
+                  useStore.getState().setHashedPin(hash);
                   useStore.getState().setIsPinEnabled(true);
                   showToast("PIN enabled!");
                 } else if (newPin) {
