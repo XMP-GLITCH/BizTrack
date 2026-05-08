@@ -1174,6 +1174,7 @@ function AddSaleModal({ ctx }) {
     }
     setModal(null);
   };
+  const isInventoryEmpty = tab === "inventory" && activeBiz?.inventory.length === 0;
 
   return (
     <ModalShell onClose={() => setModal(null)} title="Record Sale">
@@ -1253,13 +1254,7 @@ function AddSaleModal({ ctx }) {
           </>
         )}
 
-        {tab === "inventory" && activeBiz?.inventory.length === 0 ? (
-          <div style={{ padding: "32px 0", textAlign: "center" }}>
-            <Package size={48} color="var(--text-secondary)" style={{ opacity: 0.3, marginBottom: 12 }} />
-            <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: 0 }}>No inventory found.</p>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)", opacity: 0.7, marginTop: 4 }}>Add items to your business first or use the Custom ✨ tab.</p>
-          </div>
-        ) : (
+        {!isInventoryEmpty && (
           <>
             <p style={S.fieldLabel}>Note (optional)</p>
             <input style={S.input} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Order from Instagram" />
