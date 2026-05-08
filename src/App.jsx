@@ -918,7 +918,7 @@ function AnalyticsScreen({ ctx }) {
 
 /* ─── SETTINGS SCREEN ───────────────────────────────────────────────────────── */
 function SettingsScreen({ ctx }) {
-  const { setScreen, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
+  const { setScreen, businesses, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
   const currencies = ["XAF","NGN","GHS","KES","USD","EUR"];
 
   return (
