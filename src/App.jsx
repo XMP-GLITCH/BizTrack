@@ -247,8 +247,13 @@ export default function BizTrack() {
   };
 
   useEffect(() => {
-    // Immediate check
-    checkUpdates();
+    // Immediate tasks after mount
+    document.body.classList.add('app-loaded');
+
+    // Defer non-critical update check to improve perceived startup speed
+    const timeout = setTimeout(() => {
+      checkUpdates();
+    }, 2500);
 
     // Check on focus or visibility change (very aggressive)
     const handleCheck = () => {
@@ -264,6 +269,7 @@ export default function BizTrack() {
       window.removeEventListener('focus', handleCheck);
       document.removeEventListener('visibilitychange', handleCheck);
       clearInterval(interval);
+      clearTimeout(timeout);
     };
   }, []);
 
