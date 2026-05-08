@@ -203,7 +203,18 @@ export default function BizTrack() {
   const [bizTab, setBizTab] = useState("overview");
   const [modal, setModal] = useState(null); // null | "addBiz" | "addItem" | "restock" | "addSale" | "editBiz" | "deleteBiz" | "toast"
   const [restockItemId, setRestockItemId] = useState(null);
-  const [toast, setToast] = useState("");
+  const [activeToast, setActiveToast] = useState(null);
+  const toastTimer = useRef(null);
+  
+  const showToast = (msg) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setActiveToast(msg);
+    toastTimer.current = setTimeout(() => {
+      setActiveToast(null);
+      toastTimer.current = null;
+    }, 1500);
+  };
+
   const userName = useStore(s => s.userName);
   const setUserName = useStore(s => s.setUserName);
   const isDarkMode = useStore(s => s.isDarkMode);
@@ -218,17 +229,6 @@ export default function BizTrack() {
   }, [isDarkMode]);
 
   const activeBiz = businesses.find((b) => b.id === activeBizId) || null;
-
-  const toastTimer = useRef(null);
-  const showToast = (msg) => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast(msg);
-    setModal("toast");
-    toastTimer.current = setTimeout(() => {
-      setModal(null);
-      toastTimer.current = null;
-    }, 1500);
-  };
 
   const openBiz = (id) => { setActiveBizId(id); setBizTab("overview"); setScreen("business"); };
 
@@ -373,7 +373,8 @@ export default function BizTrack() {
         {modal === "addSale" && <AddSaleModal ctx={ctx} />}
         {modal === "pin-setup" && <PinSetupModal ctx={ctx} />}
         {modal === "delete-biz" && <DeleteBizModal ctx={ctx} />}
-        {toast && <Toast msg={toast} />}
+        {/* INDEPENDENT TOAST */}
+        {activeToast && <Toast msg={activeToast} onDismiss={() => setActiveToast(null)} />}
       </div>
     </div>
   );
@@ -1368,9 +1369,22 @@ function DeleteBizModal({ ctx }) {
   );
 }
 
-function Toast({ msg }) {
+function Toast({ msg, onDismiss }) {
   return (
-    <div style={S.toast}>{msg}</div>
+    <div 
+      style={{ position: "fixed", bottom: 100, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 10000 }}
+      onClick={onDismiss}
+    >
+      <div style={{ background: "rgba(44, 24, 16, 0.95)", color: "#FAF9F7", padding: "12px 24px", borderRadius: 30, fontSize: 13, fontWeight: 600, boxShadow: "0 10px 25px rgba(0,0,0,0.3)", animation: "toastIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards", cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)" }}>
+        {msg}
+      </div>
+      <style>{`
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateY(20px) scale(0.9); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+      `}</style>
+    </div>
   );
 }
 
