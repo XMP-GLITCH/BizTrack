@@ -199,6 +199,8 @@ export default function BizTrack() {
   });
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [isUpdating, setIsUpdating] = useState(false);
   
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -210,19 +212,36 @@ export default function BizTrack() {
   }, []);
 
   const checkUpdates = async (manual = false) => {
-    if (manual) showToast("Checking for updates...");
+    if (manual) {
+      setUpdateProgress(10);
+      showToast("Searching for updates...");
+    }
+    
     if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.getRegistration();
         if (reg) {
+          if (manual) {
+            setUpdateProgress(40);
+            await new Promise(r => setTimeout(r, 600)); // Visual buffer
+            setUpdateProgress(70);
+          }
+          
           await reg.update();
-          // If manual and no new content found after update()
-          if (manual && !reg.waiting && !reg.installing) {
-            setTimeout(() => showToast("App is up to date!"), 500);
+          
+          if (manual) {
+            setUpdateProgress(100);
+            setTimeout(() => {
+              setUpdateProgress(0);
+              if (!reg.waiting && !reg.installing) {
+                showToast("App is up to date!");
+              }
+            }, 500);
           }
         }
       } catch (e) {
         console.error("SW Update Error:", e);
+        setUpdateProgress(0);
       }
     }
   };
@@ -409,7 +428,7 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates };
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -446,22 +465,43 @@ export default function BizTrack() {
           <div style={S.modalOverlay}>
              <div style={{ ...S.modalSheet, padding: 32, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ background: "rgba(193,127,90,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-                   <RefreshCw size={32} color="var(--accent-color)" className="animate-spin" />
+                   <RefreshCw size={32} color="var(--accent-color)" className={isUpdating ? "animate-spin" : ""} />
                 </div>
-                <h2 style={S.modalTitle}>Update Available ✨</h2>
+                <h2 style={S.modalTitle}>{isUpdating ? "Installing Update..." : "Update Available ✨"}</h2>
                 <p style={{ ...S.greeting, color: "var(--text-secondary)", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
-                   A new version of BizTrack is ready with improvements and new features. Update now to stay current?
+                   {isUpdating ? "Downloading and applying the latest changes. This will only take a moment." : "A new version of BizTrack is ready with improvements and new features. Update now to stay current?"}
                 </p>
-                <div style={{ display: "flex", gap: 12, width: "100%" }}>
-                   <button 
-                     style={{ ...S.ghostBtn, flex: 1 }} 
-                     onClick={() => setNeedRefresh(false)}
-                   >Later</button>
-                   <button 
-                     style={{ ...S.primaryBtn, flex: 2, marginTop: 0 }} 
-                     onClick={() => updateServiceWorker(true)}
-                   >Update Now</button>
-                </div>
+
+                {isUpdating ? (
+                   <div style={{ width: "100%", height: 8, background: "var(--border-color)", borderRadius: 99, overflow: "hidden", marginBottom: 12 }}>
+                      <div style={{ height: "100%", width: `${updateProgress}%`, background: "var(--accent-color)", transition: "width 0.3s ease" }} />
+                   </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 12, width: "100%" }}>
+                     <button 
+                       style={{ ...S.ghostBtn, flex: 1 }} 
+                       onClick={() => setNeedRefresh(false)}
+                     >Later</button>
+                     <button 
+                       style={{ ...S.primaryBtn, flex: 2, marginTop: 0 }} 
+                       onClick={() => {
+                         setIsUpdating(true);
+                         setUpdateProgress(10);
+                         // Simulate installation progress before reload
+                         let p = 10;
+                         const interval = setInterval(() => {
+                           p += 15;
+                           if (p >= 95) {
+                             clearInterval(interval);
+                             updateServiceWorker(true);
+                           } else {
+                             setUpdateProgress(p);
+                           }
+                         }, 150);
+                       }}
+                     >Update Now</button>
+                  </div>
+                )}
              </div>
           </div>
         )}
@@ -1580,10 +1620,15 @@ function AboutScreen({ ctx }) {
           ) : (
             <>
               <button 
-                style={{ ...S.primaryBtn, marginBottom: 8, background: "var(--accent-color)" }} 
+                style={{ ...S.primaryBtn, marginBottom: 8, background: "var(--accent-color)", position: "relative", overflow: "hidden" }} 
                 onClick={() => checkUpdates(true)}
               >
-                Check for Updates
+                {ctx.updateProgress > 0 && ctx.updateProgress < 100 ? (
+                  <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.2)", width: `${ctx.updateProgress}%`, transition: "width 0.2s ease" }} />
+                ) : null}
+                <span style={{ position: "relative", zIndex: 1 }}>
+                  {ctx.updateProgress > 0 && ctx.updateProgress < 100 ? `Checking... ${ctx.updateProgress}%` : "Check for Updates"}
+                </span>
               </button>
               
               <div style={S.timeline}>
