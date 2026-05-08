@@ -1236,7 +1236,7 @@ function AddSaleModal({ ctx }) {
             
             <div style={{ display: "flex", gap: 12 }}>
               <div style={{ flex: 1 }}>
-                <p style={S.fieldLabel}>Base Cost (Yarn+Transport)</p>
+                <p style={S.fieldLabel}>Material / Base Cost</p>
                 <input style={S.input} type="number" value={materialCost} onChange={(e) => setMaterialCost(e.target.value)} placeholder="0" />
               </div>
               <div style={{ flex: 1 }}>
