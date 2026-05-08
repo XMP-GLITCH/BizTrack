@@ -1443,8 +1443,9 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
       <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 40 }}>
         {step === 0 && (
           <div style={{ animation: "fadeIn 0.8s ease" }}>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 32 }}>
-               <TrendingUp size={64} color="#D4B896" />
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 32, position: "relative" }}>
+               <div style={{ position: "absolute", width: 140, height: 140, background: "rgba(193, 127, 90, 0.15)", filter: "blur(30px)", borderRadius: "50%" }} />
+               <img src="/avatar-1-coin.svg" style={{ width: 140, height: 140, position: "relative", zIndex: 1 }} />
             </div>
             <h1 style={{ ...S.userName, color: "var(--bg-primary)", fontSize: 32, marginBottom: 12 }}>Welcome to BizTrack</h1>
             <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", fontSize: 16, marginBottom: 32 }}>Your all-in-one business growth companion.</p>
@@ -1466,33 +1467,29 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
                 {hasStarted ? "Continue Setup" : "Get Started"}
               </button>
 
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button 
-                  style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
-                  onClick={handleExport}
-                >Export Data</button>
-                <button 
-                  style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
-                  onClick={() => setShowImport(true)}
-                >Import Data</button>
-              </div>
-            </div>
+              <button 
+                style={{ ...S.ghostBtn, border: "none", color: "rgba(255,255,255,0.4)", fontSize: 11, marginTop: 12 }}
+                onClick={() => setShowImport(!showImport)}
+              >
+                Already have data? Transfer or Restore
+              </button>
 
-            {showImport && (
-              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-                <div style={{ background: "var(--bg-primary)", borderRadius: 24, padding: 24, width: "100%", maxWidth: 400 }}>
-                  <h3 style={{ color: "var(--text-primary)", marginBottom: 12 }}>Import Backup</h3>
-                  <textarea 
-                    style={{ ...S.input, height: 120, fontSize: 12, paddingTop: 12 }} 
-                    placeholder="Paste your backup code here..." 
-                    value={importData}
-                    onChange={(e) => setImportData(e.target.value)}
-                  />
-                  <button style={{ ...S.primaryBtn, marginTop: 16 }} onClick={handleImport}>Restore Data</button>
-                  <button style={{ ...S.ghostBtn, marginTop: 8, border: "none" }} onClick={() => setShowImport(false)}>Cancel</button>
+              {showImport && (
+                <div style={{ display: "flex", gap: 8, animation: "fadeIn 0.3s ease" }}>
+                  <button 
+                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
+                    onClick={handleExport}
+                  >Export Code</button>
+                  <button 
+                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
+                    onClick={() => {
+                      const code = prompt("Paste your backup code:");
+                      if (code) { setImportData(code); handleImport(); }
+                    }}
+                  >Paste Code</button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
         {step === 1 && (
