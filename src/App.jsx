@@ -1356,12 +1356,6 @@ function AddSaleModal({ ctx }) {
                 placeholder="Price paid by customer"
               />
               
-              {preview && (
-                <div style={S.calcPreview}>
-                  <p style={S.calcLabel}>Revenue: <strong>{fmt(preview.revenue)}</strong></p>
-                  <p style={S.calcLabel}>Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
-                </div>
-              )}
             </>
           )
         ) : (
