@@ -57,6 +57,16 @@ const hashPin = async (pin) => {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 };
 
+const genRecoveryKey = () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No I, O, 0, 1 for clarity
+  let res = "";
+  for(let i=0; i<8; i++) {
+    if (i === 4) res += "-";
+    res += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return res;
+};
+
 /* ─── ROOT ─────────────────────────────────────────────────────────────────── */
 
 /* ─── INSTALL PROMPT ────────────────────────────────────────────────────────── */
@@ -253,7 +263,10 @@ export default function BizTrack() {
   const lockoutUntil = useStore(s => s.lockoutUntil);
   const setLockoutUntil = useStore(s => s.setLockoutUntil);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar };
+  const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
+  const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
+
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -1265,7 +1278,9 @@ function Onboarding({ ctx }) {
 /* ─── SECURITY ─────────────────────────────────────────────────────────────── */
 function PinLock({ ctx, onUnlock }) {
   const [input, setInput] = useState("");
-  const { hashedPin, userName, userAvatar, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil } = ctx;
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryInput, setRecoveryInput] = useState("");
+  const { hashedPin, hashedRecoveryKey, userName, userAvatar, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, setHashedPin, setIsPinEnabled, setHashedRecoveryKey } = ctx;
 
   const isLockedOut = lockoutUntil && new Date(lockoutUntil) > new Date();
   const secondsLeft = isLockedOut ? Math.ceil((new Date(lockoutUntil) - new Date()) / 1000) : 0;
@@ -1285,10 +1300,8 @@ function PinLock({ ctx, onUnlock }) {
 
   const press = async (n) => {
     if (isLockedOut || input.length >= 4) return;
-    
     const newVal = input + n;
     setInput(newVal);
-    
     if (newVal.length === 4) {
       const hash = await hashPin(newVal);
       if (hash === hashedPin) {
@@ -1306,6 +1319,43 @@ function PinLock({ ctx, onUnlock }) {
       }
     }
   };
+
+  const submitRecovery = async () => {
+    const hash = await hashPin(recoveryInput.toUpperCase().replace(/\s/g, ""));
+    if (hash === hashedRecoveryKey) {
+      if (confirm("Recovery Key accepted! Reset passcode and unlock?")) {
+        setHashedPin(null);
+        setHashedRecoveryKey(null);
+        setIsPinEnabled(false);
+        setLoginAttempts(0);
+        setLockoutUntil(null);
+        onUnlock();
+      }
+    } else {
+      alert("Invalid Recovery Key.");
+    }
+  };
+
+  if (recoveryMode) {
+    return (
+      <div style={{ ...S.shell, background: "var(--bg-primary)" }}>
+        <div style={{ ...S.phone, padding: 40, alignItems: "center", justifyContent: "center" }}>
+          <Shield size={48} color="var(--accent-color)" style={{ marginBottom: 20 }} />
+          <h2 style={{ ...S.userName, marginBottom: 8 }}>PIN Recovery</h2>
+          <p style={{ ...S.greeting, textAlign: "center", marginBottom: 32 }}>Enter the 8-character recovery key you saved earlier.</p>
+          <input 
+            style={{ ...S.input, textAlign: "center", letterSpacing: 2, fontSize: 18, textTransform: "uppercase" }}
+            value={recoveryInput}
+            onChange={(e) => setRecoveryInput(e.target.value)}
+            placeholder="XXXX-XXXX"
+            autoFocus
+          />
+          <button style={{ ...S.primaryBtn, marginTop: 24 }} onClick={submitRecovery}>Reset Passcode</button>
+          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => setRecoveryMode(false)}>Back to PIN</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ ...S.shell, background: "var(--bg-primary)" }}>
@@ -1328,6 +1378,8 @@ function PinLock({ ctx, onUnlock }) {
           <button style={S.numKey} onClick={() => press(0)} disabled={isLockedOut}>0</button>
           <button style={{ ...S.numKey, fontSize: 14 }} onClick={() => setInput("")} disabled={isLockedOut}>Clear</button>
         </div>
+
+        <button style={{ ...S.ghostBtn, border: "none", marginTop: 32, fontSize: 13 }} onClick={() => setRecoveryMode(true)}>Forgot PIN?</button>
       </div>
     </div>
   );
@@ -1516,14 +1568,23 @@ function AccountScreen({ ctx }) {
           <div style={S.settingsCard}>
             <div style={S.settingsRow} onClick={async () => {
               if (isPinEnabled) {
-                useStore.getState().setIsPinEnabled(false);
-                useStore.getState().setHashedPin(null);
-                showToast("PIN disabled");
+                if (confirm("Disable passcode lock? This will also remove your recovery key.")) {
+                  useStore.getState().setIsPinEnabled(false);
+                  useStore.getState().setHashedPin(null);
+                  useStore.getState().setHashedRecoveryKey(null);
+                  showToast("PIN disabled");
+                }
               } else {
-                const newPin = prompt("Enter a 4-digit PIN:");
+                const newPin = prompt("Enter a new 4-digit PIN:");
                 if (newPin && newPin.length === 4 && /\d{4}/.test(newPin)) {
+                  const key = genRecoveryKey();
+                  alert(`IMPORTANT: Your Recovery Key is ${key}\n\nWrite this down! If you forget your PIN, you will need this key to unlock your business data.`);
+                  
                   const hash = await hashPin(newPin);
+                  const keyHash = await hashPin(key.replace("-", ""));
+                  
                   useStore.getState().setHashedPin(hash);
+                  useStore.getState().setHashedRecoveryKey(keyHash);
                   useStore.getState().setIsPinEnabled(true);
                   showToast("PIN enabled!");
                 } else if (newPin) {
