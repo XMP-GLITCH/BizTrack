@@ -461,11 +461,11 @@ export default function BizTrack() {
         {activeToast && <Toast msg={activeToast} onDismiss={() => setActiveToast(null)} />}
 
         {/* PWA UPDATE MODAL */}
-        {needRefresh && (
+        {(needRefresh || isUpdating) && (
           <div style={S.modalOverlay}>
              <div style={{ ...S.modalSheet, padding: 32, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ background: "rgba(193,127,90,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-                   <RefreshCw size={32} color="var(--accent-color)" className={isUpdating ? "animate-spin" : ""} />
+                   <RefreshCw size={32} color="var(--accent-color)" className={isUpdating ? "spin" : ""} />
                 </div>
                 <h2 style={S.modalTitle}>{isUpdating ? "Installing Update..." : "Update Available ✨"}</h2>
                 <p style={{ ...S.greeting, color: "var(--text-secondary)", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
@@ -1519,6 +1519,11 @@ function Toast({ msg, onDismiss }) {
           from { opacity: 0; transform: translateY(20px) scale(0.9); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .spin { animation: spin 1s linear infinite; }
       `}</style>
     </div>
   );
