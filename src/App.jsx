@@ -1024,21 +1024,110 @@ function SettingsScreen({ ctx }) {
                 showToast("No data to export!");
                 return;
               }
-              const rows = [["Business", "Item", "Qty Sold", "Revenue", "Cost", "Profit", "Date", "Note"]];
-              businesses.forEach(b => {
-                b.sales.forEach(s => {
-                  rows.push([b.name, s.itemName, s.qty, s.revenue, s.cost, s.revenue - s.cost, s.date, s.note || ""]);
-                });
+
+              const cur = currency || "XAF";
+              const fmtNum = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(n));
+              const esc = (v) => {
+                const s = String(v ?? "");
+                return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+              };
+
+              const rows = [];
+              const sep = () => rows.push([]);
+              const header = (title) => { sep(); rows.push([`═══ ${title.toUpperCase()} ═══`]); sep(); };
+
+              // ── REPORT HEADER ──
+              rows.push(["BizTrack Business Report"]);
+              rows.push([`Generated: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`]);
+              rows.push([`Owner: ${userName || "N/A"}`]);
+              rows.push([`Currency: ${cur}`]);
+              rows.push([`Version: ${VERSION}`]);
+
+              // ── PORTFOLIO SUMMARY ──
+              header("Portfolio Summary");
+              const totalRev = businesses.reduce((a, b) => a + b.sales.reduce((s, sl) => s + sl.revenue, 0), 0);
+              const totalCost = businesses.reduce((a, b) => a + b.sales.reduce((s, sl) => s + sl.cost, 0), 0);
+              const totalProfit = totalRev - totalCost;
+              const totalItems = businesses.reduce((a, b) => a + b.inventory.length, 0);
+              const totalSales = businesses.reduce((a, b) => a + b.sales.length, 0);
+              rows.push(["Total Businesses", businesses.length]);
+              rows.push(["Total Inventory Items", totalItems]);
+              rows.push(["Total Sales Recorded", totalSales]);
+              rows.push(["Total Revenue", fmtNum(totalRev)]);
+              rows.push(["Total Cost of Goods", fmtNum(totalCost)]);
+              rows.push(["Total Profit", fmtNum(totalProfit)]);
+              rows.push(["Overall Margin", totalRev > 0 ? ((totalProfit / totalRev) * 100).toFixed(1) + "%" : "N/A"]);
+
+              // ── PER BUSINESS BREAKDOWN ──
+              businesses.forEach((biz, idx) => {
+                const stats = calcBizStats(biz);
+                const status = getStatus(stats.margin);
+
+                header(`Business ${idx + 1}: ${biz.name}`);
+                rows.push(["Category", biz.category || "N/A"]);
+                rows.push(["Status", STATUS_STYLE[status]?.label || status]);
+                rows.push(["Revenue", fmtNum(stats.revenue)]);
+                rows.push(["Cost of Goods", fmtNum(stats.cogs)]);
+                rows.push(["Profit", fmtNum(stats.profit)]);
+                rows.push(["Margin", stats.margin + "%"]);
+                rows.push(["Inventory Items", biz.inventory.length]);
+                rows.push(["Sales Count", biz.sales.length]);
+
+                // Inventory table
+                if (biz.inventory.length > 0) {
+                  sep();
+                  rows.push(["── Inventory ──"]);
+                  rows.push(["Item Name", "In Stock", "Sold", "Unit Cost", "Selling Price", "Stock Value", "Potential Revenue"]);
+                  biz.inventory.forEach(item => {
+                    rows.push([
+                      esc(item.name),
+                      item.qty,
+                      item.sold || 0,
+                      fmtNum(item.cost),
+                      fmtNum(item.price),
+                      fmtNum(item.cost * item.qty),
+                      fmtNum(item.price * item.qty)
+                    ]);
+                  });
+                }
+
+                // Sales table
+                if (biz.sales.length > 0) {
+                  sep();
+                  rows.push(["── Sales History ──"]);
+                  rows.push(["Date", "Item", "Qty", "Selling Price", "Revenue", "Cost", "Profit", "Discount", "Note"]);
+                  biz.sales.forEach(s => {
+                    const profit = s.revenue - s.cost;
+                    rows.push([
+                      s.date,
+                      esc(s.itemName),
+                      s.qty,
+                      fmtNum(s.actualPrice || s.revenue / (s.qty || 1)),
+                      fmtNum(s.revenue),
+                      fmtNum(s.cost),
+                      fmtNum(profit),
+                      s.discount ? fmtNum(s.discount) : "-",
+                      esc(s.note || "")
+                    ]);
+                  });
+                }
               });
-              const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-              const encodedUri = encodeURI(csvContent);
+
+              // ── FOOTER ──
+              sep();
+              rows.push(["End of Report — BizTrack " + VERSION]);
+
+              const csvString = rows.map(r => r.join(",")).join("\n");
+              const blob = new Blob(["\uFEFF" + csvString], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
               const link = document.createElement("a");
-              link.setAttribute("href", encodedUri);
-              link.setAttribute("download", `biztrack_export_${new Date().toISOString().slice(0,10)}.csv`);
+              link.href = url;
+              link.setAttribute("download", `BizTrack_Report_${new Date().toISOString().slice(0,10)}.csv`);
               document.body.appendChild(link);
               link.click();
               document.body.removeChild(link);
-              showToast("Exported to CSV!");
+              URL.revokeObjectURL(url);
+              showToast("Report exported!");
             }}>
               <Upload size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
