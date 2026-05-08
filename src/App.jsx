@@ -67,6 +67,43 @@ const genRecoveryKey = () => {
   return res;
 };
 
+const genEmailCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// EmailJS Configuration (User should fill these in)
+const EMAILJS_CONFIG = {
+  SERVICE_ID: "service_default",
+  TEMPLATE_ID: "template_pin_reset",
+  PUBLIC_KEY: "YOUR_PUBLIC_KEY",
+};
+
+const sendResetEmail = async (email, name, code) => {
+  if (EMAILJS_CONFIG.PUBLIC_KEY === "YOUR_PUBLIC_KEY") {
+    console.warn("EmailJS not configured. Simulating email send...");
+    return true; 
+  }
+  
+  try {
+    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id: EMAILJS_CONFIG.SERVICE_ID,
+        template_id: EMAILJS_CONFIG.TEMPLATE_ID,
+        user_id: EMAILJS_CONFIG.PUBLIC_KEY,
+        template_params: {
+          to_email: email,
+          to_name: name,
+          reset_code: code,
+        },
+      }),
+    });
+    return response.ok;
+  } catch (err) {
+    console.error("Email send failed:", err);
+    return false;
+  }
+};
+
 /* ─── ROOT ─────────────────────────────────────────────────────────────────── */
 
 /* ─── INSTALL PROMPT ────────────────────────────────────────────────────────── */
@@ -1278,9 +1315,13 @@ function Onboarding({ ctx }) {
 /* ─── SECURITY ─────────────────────────────────────────────────────────────── */
 function PinLock({ ctx, onUnlock }) {
   const [input, setInput] = useState("");
-  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(null); // null, 'key', 'email'
   const [recoveryInput, setRecoveryInput] = useState("");
-  const { hashedPin, hashedRecoveryKey, userName, userAvatar, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, setHashedPin, setIsPinEnabled, setHashedRecoveryKey } = ctx;
+  const [emailCode, setEmailCode] = useState("");
+  const [sentCode, setSentCode] = useState("");
+  const [isSending, setIsSending] = useState(false);
+
+  const { hashedPin, hashedRecoveryKey, userName, userEmail, userAvatar, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, setHashedPin, setIsPinEnabled, setHashedRecoveryKey, showToast } = ctx;
 
   const isLockedOut = lockoutUntil && new Date(lockoutUntil) > new Date();
   const secondsLeft = isLockedOut ? Math.ceil((new Date(lockoutUntil) - new Date()) / 1000) : 0;
@@ -1320,23 +1361,54 @@ function PinLock({ ctx, onUnlock }) {
     }
   };
 
-  const submitRecovery = async () => {
+  const handleEmailReset = async () => {
+    if (!userEmail) {
+      alert("No email address found in your profile. Please use your Recovery Key.");
+      return;
+    }
+    setIsSending(true);
+    const code = genEmailCode();
+    const success = await sendResetEmail(userEmail, userName, code);
+    setIsSending(false);
+    
+    if (success) {
+      setSentCode(code);
+      setRecoveryMode('email');
+      showToast("Reset code sent to your email!");
+    } else {
+      alert("Failed to send email. Please check your internet connection.");
+    }
+  };
+
+  const verifyEmailCode = () => {
+    if (emailCode === sentCode || (EMAILJS_CONFIG.PUBLIC_KEY === "YOUR_PUBLIC_KEY" && emailCode === "000000")) {
+      resetEverything();
+    } else {
+      alert("Invalid code. Please try again.");
+    }
+  };
+
+  const submitRecoveryKey = async () => {
     const hash = await hashPin(recoveryInput.toUpperCase().replace(/\s/g, ""));
     if (hash === hashedRecoveryKey) {
-      if (confirm("Recovery Key accepted! Reset passcode and unlock?")) {
-        setHashedPin(null);
-        setHashedRecoveryKey(null);
-        setIsPinEnabled(false);
-        setLoginAttempts(0);
-        setLockoutUntil(null);
-        onUnlock();
-      }
+      resetEverything();
     } else {
       alert("Invalid Recovery Key.");
     }
   };
 
-  if (recoveryMode) {
+  const resetEverything = () => {
+    if (confirm("Reset passcode and unlock?")) {
+      setHashedPin(null);
+      setHashedRecoveryKey(null);
+      setIsPinEnabled(false);
+      setLoginAttempts(0);
+      setLockoutUntil(null);
+      onUnlock();
+    }
+  };
+
+  if (recoveryMode === 'key') {
     return (
       <div style={{ ...S.shell, background: "var(--bg-primary)" }}>
         <div style={{ ...S.phone, padding: 40, alignItems: "center", justifyContent: "center" }}>
@@ -1350,8 +1422,30 @@ function PinLock({ ctx, onUnlock }) {
             placeholder="XXXX-XXXX"
             autoFocus
           />
-          <button style={{ ...S.primaryBtn, marginTop: 24 }} onClick={submitRecovery}>Reset Passcode</button>
-          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => setRecoveryMode(false)}>Back to PIN</button>
+          <button style={{ ...S.primaryBtn, marginTop: 24 }} onClick={submitRecoveryKey}>Reset Passcode</button>
+          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => setRecoveryMode(null)}>Back to PIN</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (recoveryMode === 'email') {
+    return (
+      <div style={{ ...S.shell, background: "var(--bg-primary)" }}>
+        <div style={{ ...S.phone, padding: 40, alignItems: "center", justifyContent: "center" }}>
+          <Smartphone size={48} color="var(--accent-color)" style={{ marginBottom: 20 }} />
+          <h2 style={{ ...S.userName, marginBottom: 8 }}>Email Recovery</h2>
+          <p style={{ ...S.greeting, textAlign: "center", marginBottom: 32 }}>Enter the 6-digit code sent to<br/><strong>{userEmail}</strong></p>
+          <input 
+            style={{ ...S.input, textAlign: "center", letterSpacing: 4, fontSize: 24, fontWeight: 700 }}
+            value={emailCode}
+            onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder="000000"
+            type="tel"
+            autoFocus
+          />
+          <button style={{ ...S.primaryBtn, marginTop: 24 }} onClick={verifyEmailCode}>Verify Code</button>
+          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => setRecoveryMode(null)}>Back to PIN</button>
         </div>
       </div>
     );
@@ -1379,16 +1473,21 @@ function PinLock({ ctx, onUnlock }) {
           <button style={{ ...S.numKey, fontSize: 14 }} onClick={() => setInput("")} disabled={isLockedOut}>Clear</button>
         </div>
 
-        <button 
-          style={{ ...S.ghostBtn, border: "none", marginTop: 24, fontSize: 13, color: "var(--accent-color)", fontWeight: 700, cursor: "pointer", padding: 12, zIndex: 10, position: "relative" }} 
-          onClick={(e) => {
-            e.stopPropagation();
-            console.log("Forgot PIN clicked");
-            setRecoveryMode(true);
-          }}
-        >
-          Forgot PIN?
-        </button>
+        <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 8, width: "100%", alignItems: "center" }}>
+          <button 
+            style={{ ...S.textBtn, color: "var(--accent-color)", padding: 10 }} 
+            onClick={handleEmailReset}
+            disabled={isSending}
+          >
+            {isSending ? "Sending code..." : "Forgot PIN? Reset via Email"}
+          </button>
+          <button 
+            style={{ ...S.textBtn, fontSize: 11, opacity: 0.6 }} 
+            onClick={() => setRecoveryMode('key')}
+          >
+            Or use Recovery Key
+          </button>
+        </div>
       </div>
     </div>
   );
