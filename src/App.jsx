@@ -12,10 +12,11 @@ const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Acce
 const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
-const VERSION = "v1.5.3";
+const VERSION = "v1.5.4";
 const BUILD_DATE = "2026.05.09";
 
 const UPDATE_LOG = [
+  { version: "v1.5.4", date: "May 9, 2026", title: "Security & Recovery Fixes", changes: ["Hardened email recovery logic with better validation.", "Improved error handling for EmailJS delivery failures.", "Added clearer guidance for users stuck on the PIN screen."] },
   { version: "v1.5.3", date: "May 9, 2026", title: "Emergency Data Rescue", changes: ["Implemented automatic restoration for data stuck in old storage versions.", "Added manual 'Rescue' tool on onboarding screen for absolute data safety.", "Hardened storage reliability for existing users."] },
   { version: "v1.5.2", date: "May 9, 2026", title: "Smart Notifications", changes: ["Real-time low-stock alerts when sales drop inventory below threshold.", "Background update notifications even when the app is closed.", "Standardized PWA branding and theme-color support."] },
   { version: "v1.4.5", date: "May 8, 2026", title: "About & Updates", changes: ["Added dedicated About section with feature list.", "Integrated Update Log for better transparency.", "Standardized versioning across the app."] },
@@ -100,9 +101,16 @@ const validateEmail = (email) => {
 };
 
 const sendResetEmail = async (email, name, code) => {
+  const recipient = String(email || "").trim();
+  if (!recipient || !validateEmail(recipient)) {
+    console.error("[BizTrack] Invalid recipient email:", recipient);
+    alert("Verification failed: The email address stored in your profile is invalid or missing.");
+    return false;
+  }
+
   if (EMAILJS_CONFIG.PUBLIC_KEY === "YOUR_PUBLIC_KEY" || !EMAILJS_CONFIG.PUBLIC_KEY) {
     console.warn("EmailJS not configured. Simulating email send...");
-    alert("SIMULATION: Reset code 000000 sent to " + email);
+    alert("SIMULATION: Reset code " + code + " sent to " + recipient);
     return true; 
   }
   
@@ -111,11 +119,11 @@ const sendResetEmail = async (email, name, code) => {
       EMAILJS_CONFIG.SERVICE_ID,
       EMAILJS_CONFIG.TEMPLATE_ID,
       {
-        to_email: email,
-        to_name: name,
+        to_email: recipient,
+        to_name: name || "Business Owner",
         reset_code: code,
       },
-      EMAILJS_CONFIG.PUBLIC_KEY // Pass key directly for maximum reliability
+      EMAILJS_CONFIG.PUBLIC_KEY
     );
     
     if (res.status === 200) {
@@ -125,7 +133,13 @@ const sendResetEmail = async (email, name, code) => {
     return false;
   } catch (err) {
     console.error("EmailJS Error:", err);
-    alert(`Email failed: ${err.text || err.message || "Unknown error"}`);
+    // Handle the specific 'recipients address empty' error more gracefully
+    const errMsg = err.text || err.message || "Unknown error";
+    if (errMsg.toLowerCase().includes("recipient")) {
+       alert("Email Delivery Failed: The stored email address is not being recognized by our service. Please use your 8-digit Recovery Key to unlock your account.");
+    } else {
+       alert(`Email failed: ${errMsg}`);
+    }
     return false;
   }
 };
@@ -2074,8 +2088,9 @@ function PinLock({ ctx, onUnlock }) {
   };
 
   const handleEmailReset = async () => {
-    if (!userEmail) {
-      alert("No email address found in your profile. Please use your Recovery Key.");
+    const emailToUse = String(userEmail || "").trim();
+    if (!emailToUse || !validateEmail(emailToUse)) {
+      alert("No valid email address found in your profile. To protect your data, you must use your 8-digit Recovery Key to reset your passcode.");
       return;
     }
     setIsSending(true);
