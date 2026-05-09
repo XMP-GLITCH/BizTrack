@@ -12,7 +12,7 @@ const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Acce
 const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
-const VERSION = "v1.5.5";
+const VERSION = "v1.5.6";
 const BUILD_DATE = "2026.05.09";
 
 const UPDATE_LOG = [
@@ -2202,32 +2202,48 @@ function PinLock({ ctx, onUnlock }) {
         </div>
 
         <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 8, width: "100%", alignItems: "center" }}>
-          <button 
-            style={{ ...S.textBtn, color: "var(--accent-color)", padding: 10 }} 
-            onClick={handleEmailReset}
-            disabled={isSending}
-          >
-            {isSending ? "Sending code..." : "Forgot PIN? Reset via Email"}
-          </button>
+          {(!userEmail || !validateEmail(userEmail)) ? (
+             <div style={{ background: "rgba(193, 127, 90, 0.05)", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(193, 127, 90, 0.1)", marginBottom: 8, width: "100%" }}>
+                <p style={{ fontSize: 11, color: "#8B6914", margin: 0, fontWeight: 700, textAlign: "center" }}>⚠️ No recovery email configured</p>
+                <p style={{ fontSize: 10, color: "var(--text-secondary)", margin: "4px 0 0", textAlign: "center" }}>Please use your Recovery Key or Data Rescue below.</p>
+             </div>
+          ) : (
+            <button 
+              style={{ ...S.textBtn, color: "var(--accent-color)", padding: 10 }} 
+              onClick={handleEmailReset}
+              disabled={isSending}
+            >
+              {isSending ? "Sending code..." : `Forgot PIN? Reset via ${userEmail}`}
+            </button>
+          )}
+          
           <button 
             style={{ ...S.textBtn, fontSize: 11, opacity: 0.6 }} 
             onClick={() => setRecoveryMode('key')}
           >
-            Or use Recovery Key
+            Or use 8-digit Recovery Key
           </button>
           
           <div style={{ height: 1, background: "var(--border-color)", width: "60%", margin: "8px 0" }} />
           
           <button 
-            style={{ ...S.textBtn, fontSize: 11, color: "#8B6914", fontWeight: 700 }} 
+            style={{ ...S.textBtn, fontSize: 12, color: "#8B6914", fontWeight: 700, background: "rgba(139, 105, 20, 0.1)", padding: "10px 20px", borderRadius: 99 }} 
             onClick={() => {
-              if (confirm("Emergency Data Rescue will search for backups from previous versions on this device. If found, your data will be restored. Continue?")) {
+              if (confirm("Emergency Data Rescue will search for backups from previous versions on this device. Continue?")) {
                 ctx.checkRescue(true);
               }
             }}
           >
-            {ctx.isRescuing ? "Scanning device..." : "Lost everything? Try Emergency Data Rescue"}
+            {ctx.isRescuing ? "Scanning device..." : "🚀 Try Emergency Data Rescue"}
           </button>
+
+          <button 
+            style={{ ...S.textBtn, fontSize: 10, opacity: 0.4, marginTop: 12 }} 
+            onClick={() => window.location.reload(true)}
+          >
+            App stuck? Force Refresh
+          </button>
+          <p style={{ fontSize: 9, opacity: 0.3, marginTop: 4 }}>BizTrack {VERSION}</p>
         </div>
       </div>
     </div>
