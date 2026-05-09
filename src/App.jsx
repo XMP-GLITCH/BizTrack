@@ -12,10 +12,12 @@ const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Acce
 const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
-const VERSION = "v1.5.6";
+const VERSION = "v1.5.7";
 const BUILD_DATE = "2026.05.09";
 
 const UPDATE_LOG = [
+  { version: "v1.5.7", date: "May 9, 2026", title: "Visual Polish & Optimization", changes: ["Removed UI icons for a cleaner look as requested.", "Confirmed stability of the Data Rescue system.", "Improved email delivery resilience with better trimming."] },
+  { version: "v1.5.6", date: "May 9, 2026", title: "Explicit Recovery Guidance", changes: ["Added email visibility on the PIN screen.", "Implemented Force Refresh for cached app versions."] },
   { version: "v1.5.5", date: "May 9, 2026", title: "Emergency Lock Bypass", changes: ["Integrated Data Rescue directly into the PIN screen.", "Allows recovery of lost data even when locked out.", "Improved guidance for account restoration."] },
   { version: "v1.5.4", date: "May 9, 2026", title: "Security & Recovery Fixes", changes: ["Hardened email recovery logic with better validation.", "Improved error handling for EmailJS delivery failures.", "Added clearer guidance for users stuck on the PIN screen."] },
   { version: "v1.5.3", date: "May 9, 2026", title: "Emergency Data Rescue", changes: ["Implemented automatic restoration for data stuck in old storage versions.", "Added manual 'Rescue' tool on onboarding screen for absolute data safety.", "Hardened storage reliability for existing users."] },
@@ -2234,7 +2236,7 @@ function PinLock({ ctx, onUnlock }) {
               }
             }}
           >
-            {ctx.isRescuing ? "Scanning device..." : "🚀 Try Emergency Data Rescue"}
+            {ctx.isRescuing ? "Scanning device..." : "Try Emergency Data Rescue"}
           </button>
 
           <button 
