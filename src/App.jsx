@@ -12,7 +12,7 @@ const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Acce
 const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
-const VERSION = "v1.5.2";
+const VERSION = "v1.5.3";
 const BUILD_DATE = "2026.05.09";
 
 const UPDATE_LOG = [
@@ -186,6 +186,97 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
   );
 }
 
+/* ─── DATA RESCUE UTILITY ─────────────────────────────────────────────────── */
+function useRescueData(hydrated) {
+  const [isRescuing, setIsRescuing] = useState(false);
+
+  const checkRescue = async (manual = false) => {
+    const current = useStore.getState();
+    if (current.onboardingComplete && !manual) return;
+
+    if (manual) setIsRescuing(true);
+    console.log("[BizTrack] Running Emergency Data Rescue...");
+
+    // 1. Check LocalStorage
+    const keys = ['biztrack-storage-v4', 'biztrack-storage-v3'];
+    for (const key of keys) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const data = JSON.parse(raw);
+          const state = data.state;
+          if (state && state.businesses?.length > 0) {
+            console.log(`[BizTrack] Found data in LS: ${key}`);
+            useStore.setState({ ...state, onboardingComplete: true });
+            if (manual) alert("Data found and restored!");
+            setIsRescuing(false);
+            return true;
+          }
+        }
+      } catch(e) {}
+    }
+
+    // 2. Check Raw IndexedDB
+    return new Promise((resolve) => {
+      try {
+        const dbRequest = indexedDB.open('keyval-store');
+        dbRequest.onerror = () => resolve(false);
+        dbRequest.onsuccess = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('keyval')) {
+            if (manual) alert("No backup found in IndexedDB.");
+            setIsRescuing(false);
+            return resolve(false);
+          }
+          
+          const transaction = db.transaction('keyval', 'readonly');
+          const store = transaction.objectStore('keyval');
+          let found = false;
+
+          ['biztrack-storage-v3', 'biztrack-storage-v4'].forEach(key => {
+            const getReq = store.get(key);
+            getReq.onsuccess = () => {
+              const raw = getReq.result;
+              if (raw && !found) {
+                try {
+                  const data = JSON.parse(raw);
+                  const state = data.state;
+                  if (state && state.businesses?.length > 0) {
+                    console.log(`[BizTrack] Found data in IDB: ${key}`);
+                    useStore.setState({ ...state, onboardingComplete: true });
+                    localStorage.setItem('biztrack-storage-v3', raw);
+                    found = true;
+                    if (manual) alert("Data found and restored from IndexedDB!");
+                    setIsRescuing(false);
+                    resolve(true);
+                  }
+                } catch(err) {}
+              }
+            };
+          });
+          
+          transaction.oncomplete = () => {
+            if (!found) {
+               if (manual) alert("No recoverable data found.");
+               setIsRescuing(false);
+               resolve(false);
+            }
+          };
+        };
+      } catch(err) {
+        setIsRescuing(false);
+        resolve(false);
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (hydrated) checkRescue();
+  }, [hydrated]);
+
+  return { isRescuing, checkRescue };
+}
+
 export default function BizTrack() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -198,6 +289,9 @@ export default function BizTrack() {
       console.log('SW registration error', error)
     },
   });
+
+  const hydrated = true; // Since we are on LS, it's always technically hydrated after first tick
+  const { isRescuing, checkRescue } = useRescueData(hydrated);
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(0);
@@ -446,7 +540,7 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress };
+  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -1844,9 +1938,16 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
 
               <button 
                 style={{ ...S.ghostBtn, border: "none", color: "rgba(255,255,255,0.4)", fontSize: 11, marginTop: 12 }}
+                onClick={() => ctx.checkRescue(true)}
+              >
+                {ctx.isRescuing ? "Searching for data..." : "Looking for lost data? Tap to Rescue"}
+              </button>
+
+              <button 
+                style={{ ...S.ghostBtn, border: "none", color: "rgba(255,255,255,0.2)", fontSize: 10 }}
                 onClick={() => setShowImport(!showImport)}
               >
-                Already have data? Transfer or Restore
+                Transfer from another device
               </button>
 
               {showImport && (
