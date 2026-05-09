@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, List, History, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
 import { useStore } from "./store/useStore";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
 const COLOR_NAMES = ["Terracotta","Gold","Sage","Rose","Slate","Plum","Mint","Sand"];
@@ -11,8 +12,8 @@ const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Acce
 const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
-const VERSION = "v1.4.5";
-const BUILD_DATE = "2026.05.08";
+const VERSION = "v1.5.2";
+const BUILD_DATE = "2026.05.09";
 
 const UPDATE_LOG = [
   { version: "v1.4.5", date: "May 8, 2026", title: "About & Updates", changes: ["Added dedicated About section with feature list.", "Integrated Update Log for better transparency.", "Standardized versioning across the app."] },
@@ -250,6 +251,9 @@ export default function BizTrack() {
     // Immediate tasks after mount
     document.body.classList.add('app-loaded');
 
+    // Request notification permission early
+    requestNotificationPermission();
+
     // Defer non-critical update check to improve perceived startup speed
     const timeout = setTimeout(() => {
       checkUpdates();
@@ -411,6 +415,14 @@ export default function BizTrack() {
       return { ...b, sales: [newSale, ...b.sales], inventory: newInventory };
     }));
     showToast("Sale recorded!");
+
+    // Low-stock notification
+    if (!sale.isCustom) {
+      const item = newInventory.find(i => String(i.id) === String(sale.itemId));
+      if (item && item.qty > 0 && item.qty <= lowStockThreshold) {
+        sendLowStockNotification(item.name, item.qty, biz.name);
+      }
+    }
   };
 
   const onboardingComplete = useStore(s => s.onboardingComplete);
