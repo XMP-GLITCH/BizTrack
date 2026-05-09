@@ -12,10 +12,11 @@ const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Acce
 const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
-const VERSION = "v1.5.4";
+const VERSION = "v1.5.5";
 const BUILD_DATE = "2026.05.09";
 
 const UPDATE_LOG = [
+  { version: "v1.5.5", date: "May 9, 2026", title: "Emergency Lock Bypass", changes: ["Integrated Data Rescue directly into the PIN screen.", "Allows recovery of lost data even when locked out.", "Improved guidance for account restoration."] },
   { version: "v1.5.4", date: "May 9, 2026", title: "Security & Recovery Fixes", changes: ["Hardened email recovery logic with better validation.", "Improved error handling for EmailJS delivery failures.", "Added clearer guidance for users stuck on the PIN screen."] },
   { version: "v1.5.3", date: "May 9, 2026", title: "Emergency Data Rescue", changes: ["Implemented automatic restoration for data stuck in old storage versions.", "Added manual 'Rescue' tool on onboarding screen for absolute data safety.", "Hardened storage reliability for existing users."] },
   { version: "v1.5.2", date: "May 9, 2026", title: "Smart Notifications", changes: ["Real-time low-stock alerts when sales drop inventory below threshold.", "Background update notifications even when the app is closed.", "Standardized PWA branding and theme-color support."] },
@@ -2213,6 +2214,19 @@ function PinLock({ ctx, onUnlock }) {
             onClick={() => setRecoveryMode('key')}
           >
             Or use Recovery Key
+          </button>
+          
+          <div style={{ height: 1, background: "var(--border-color)", width: "60%", margin: "8px 0" }} />
+          
+          <button 
+            style={{ ...S.textBtn, fontSize: 11, color: "#8B6914", fontWeight: 700 }} 
+            onClick={() => {
+              if (confirm("Emergency Data Rescue will search for backups from previous versions on this device. If found, your data will be restored. Continue?")) {
+                ctx.checkRescue(true);
+              }
+            }}
+          >
+            {ctx.isRescuing ? "Scanning device..." : "Lost everything? Try Emergency Data Rescue"}
           </button>
         </div>
       </div>
