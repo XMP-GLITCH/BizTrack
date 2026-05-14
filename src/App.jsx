@@ -335,6 +335,15 @@ export default function BizTrack() {
       try {
         const reg = await navigator.serviceWorker.getRegistration();
         if (reg) {
+          if (manual && reg.waiting) {
+            setUpdateProgress(100);
+            setTimeout(() => {
+              setUpdateProgress(0);
+              setNeedRefresh(true);
+            }, 500);
+            return;
+          }
+
           if (manual) {
             setUpdateProgress(40);
             await new Promise(r => setTimeout(r, 600)); // Visual buffer
@@ -349,6 +358,8 @@ export default function BizTrack() {
               setUpdateProgress(0);
               if (!reg.waiting && !reg.installing) {
                 showToast("App is up to date!");
+              } else if (reg.waiting) {
+                setNeedRefresh(true);
               }
             }, 500);
           }
