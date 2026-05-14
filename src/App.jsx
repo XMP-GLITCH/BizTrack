@@ -195,7 +195,7 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
             <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 8px", lineHeight: 1.4 }}>
               Add to your home screen for offline access and a native app feel.
             </p>
-            <button onClick={handleInstallClick} style={{ background: "#2C1810", color: "#FFF", border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={handleInstallClick} style={{ background: "var(--text-primary)", color: "var(--bg-primary)", border: "none", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
               Install App
             </button>
           </>
@@ -708,7 +708,7 @@ function HomeScreen({ ctx }) {
       <div style={S.cardList}>
         {businesses.length === 0 && (
           <div style={S.emptyState}>
-            <div style={S.emptyIcon}><Store size={40} color="#2C1810" strokeWidth={1.5} /></div>
+            <div style={S.emptyIcon}><Store size={40} color="var(--text-primary)" strokeWidth={1.5} /></div>
             <p style={S.emptyTitle}>No businesses yet</p>
             <p style={S.emptySub}>Tap "+ Add New" to get started</p>
           </div>
@@ -753,7 +753,7 @@ function BusinessScreen({ ctx }) {
           <span style={{ fontSize: 18 }}>{activeBiz.emoji}</span>
           <span style={S.bizHeaderName}>{activeBiz.name}</span>
         </div>
-        <button style={S.iconBtn} onClick={() => setModal("delete-biz")}><Trash2 size={20} color="#2C1810" /></button>
+        <button style={S.iconBtn} onClick={() => setModal("delete-biz")}><Trash2 size={20} color="var(--text-primary)" /></button>
       </div>
 
       {/* HERO */}
@@ -2192,7 +2192,7 @@ function PinLock({ ctx, onUnlock }) {
         
         <div style={{ display: "flex", gap: 16, marginBottom: 40 }}>
           {[0,1,2,3].map(i => (
-            <div key={i} style={{ width: 16, height: 16, borderRadius: "50%", background: input.length > i ? "#2C1810" : "#E0D6C8", border: isLockedOut ? "1px solid #C0392B" : "none" }} />
+            <div key={i} style={{ width: 16, height: 16, borderRadius: "50%", background: input.length > i ? "var(--text-primary)" : "var(--border-color)", border: isLockedOut ? "1px solid #C0392B" : "none" }} />
           ))}
         </div>
 
@@ -2569,11 +2569,11 @@ const S = {
   summaryCard: { margin: "8px 24px 16px", background: "linear-gradient(135deg,#2C1810,#5C3D2E)", borderRadius: 24, padding: "22px", position: "relative", overflow: "hidden", boxShadow: "0 12px 40px rgba(44,24,16,0.35)" },
   summaryOrb: { position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.04)" },
   summaryLabel: { fontSize: 12, color: "rgba(255,255,255,0.85)", margin: "0 0 6px", letterSpacing: 0.8, textTransform: "uppercase", fontWeight: 600 },
-  summaryAmount: { fontSize: 28, color: "var(--bg-primary)", margin: "0 0 18px", fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, letterSpacing: -1 },
+  summaryAmount: { fontSize: 28, color: "#FFFFFF", margin: "0 0 18px", fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, letterSpacing: -1 },
   summaryRow: { display: "flex", alignItems: "center", gap: 16 },
   summaryDivider: { width: 1, height: 28, background: "rgba(255,255,255,0.2)" },
   summarySubLabel: { fontSize: 11, color: "rgba(255,255,255,0.8)", margin: "0 0 3px", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 },
-  summarySubVal: { fontSize: 16, color: "var(--bg-primary)", margin: 0, fontWeight: 700 },
+  summarySubVal: { fontSize: 16, color: "#FFFFFF", margin: 0, fontWeight: 700 },
 
   alertBanner: { margin: "0 24px 14px", background: "#FFF8E1", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 10, border: "1px solid #F0C040" },
   alertIcon: { fontSize: 18, flexShrink: 0 },
@@ -2617,7 +2617,7 @@ const S = {
 
   tabs: { display: "flex", padding: "0 24px", gap: 8, marginBottom: 14, flexShrink: 0 },
   tab: { flex: 1, padding: "9px 0", borderRadius: 12, border: "none", background: "rgba(44,24,16,0.07)", color: "var(--text-secondary)", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
-  tabActive: { background: "#2C1810", color: "var(--bg-primary)" },
+  tabActive: { background: "var(--text-primary)", color: "var(--bg-primary)" },
   tabContent: { flex: 1 },
   tabInner: { padding: "0 24px", display: "flex", flexDirection: "column", gap: 12 },
 
@@ -2679,7 +2679,7 @@ const S = {
   emojiRow: { display: "flex", justifyContent: "space-between", marginBottom: 16 },
   emojiBtn: { fontSize: 28, background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: 12 },
   feedbackInput: { width: "100%", minHeight: 80, borderRadius: 12, border: "1.5px solid var(--border-color)", padding: "10px 12px", fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: "var(--text-primary)", background: "var(--bg-primary)", resize: "none", boxSizing: "border-box", marginBottom: 12, outline: "none" },
-  submitBtn: { width: "100%", background: "#2C1810", color: "var(--bg-primary)", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
+  submitBtn: { width: "100%", background: "var(--text-primary)", color: "var(--bg-primary)", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
 
   // MODALS
   modalOverlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end", zIndex: 100 },
@@ -2699,7 +2699,7 @@ const S = {
   calcPreview: { background: "#F0FAF0", borderRadius: 14, padding: "12px 16px", border: "1.5px solid #B8E0B0" },
   calcLabel: { fontSize: 13, color: "var(--text-primary)", margin: "2px 0", fontWeight: 500 },
 
-  primaryBtn: { width: "100%", background: "#2C1810", color: "var(--bg-primary)", border: "none", borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", marginTop: 4 },
+  primaryBtn: { width: "100%", background: "var(--text-primary)", color: "var(--bg-primary)", border: "none", borderRadius: 14, padding: "15px", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans',sans-serif", marginTop: 4 },
   ghostBtn: { width: "100%", background: "transparent", color: "var(--text-secondary)", border: "1.5px solid #D4B896", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans',sans-serif" },
 
   deleteWarning: { background: "#FDECEA", borderRadius: 16, padding: "20px", textAlign: "center" },
@@ -2714,7 +2714,7 @@ const S = {
   navLabel: { fontSize: 10, color: "var(--text-secondary)", fontWeight: 600, letterSpacing: 0.3 },
   addNavIcon: { color: "var(--accent-color)", fontWeight: 900 },
 
-  toast: { position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)", background: "#2C1810", color: "var(--bg-primary)", padding: "12px 24px", borderRadius: 99, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", zIndex: 200 },
+  toast: { position: "absolute", bottom: 96, left: "50%", transform: "translateX(-50%)", background: "var(--text-primary)", color: "var(--bg-primary)", padding: "12px 24px", borderRadius: 99, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", zIndex: 200 },
   numKey: { width: 64, height: 64, borderRadius: "50%", border: "1.5px solid var(--border-color)", background: "var(--card-bg)", fontSize: 24, fontWeight: 700, color: "var(--text-primary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", outline: "none" },
 
   // TIMELINE
