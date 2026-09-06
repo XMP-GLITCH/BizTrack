@@ -99,6 +99,19 @@ export const useStore = create(
       migrationFailed: false,
       migrationIssues: null,
 
+      /* ── sync cursors ──────────────────────────────────────────────────── */
+      // Persisted so a reopened app resumes where it left off instead of
+      // re-uploading everything over metered mobile data.
+      lastPushedAt: null,
+      lastPulledAt: null,
+      setSyncCursors: ({ lastPushedAt, lastPulledAt }) => set((s) => ({
+        lastPushedAt: lastPushedAt ?? s.lastPushedAt,
+        lastPulledAt: lastPulledAt ?? s.lastPulledAt,
+      })),
+      // Cleared on sign-out: the next account must not inherit another's cursor
+      // and conclude it has already pulled everything.
+      resetSyncCursors: () => set({ lastPushedAt: null, lastPulledAt: null }),
+
       hashedPin: null,
       hashedRecoveryKey: null,
       isPinEnabled: false,

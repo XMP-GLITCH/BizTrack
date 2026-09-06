@@ -6,6 +6,11 @@ import { formatMoney, toMinor, toMajor, marginPercent, CURRENCIES } from "./doma
 import { calcBizStats, calcPortfolioStats, saleRevenue, saleCost, saleProfit, saleDiscount, getStatus } from "./domain/stats.js";
 import { deriveInventory, hasStockDiscrepancy } from "./domain/inventory.js";
 import { parseBackup, migrateState, verifyMigration } from "./domain/migrate.js";
+import { isBackendConfigured } from "./backend/supabase.js";
+import { useAuth } from "./backend/useAuth.js";
+import { useSync } from "./backend/useSync.js";
+import { signOut } from "./backend/auth.js";
+import AuthScreen from "./screens/AuthScreen.jsx";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
@@ -362,6 +367,15 @@ export default function BizTrack() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Session lives in React, not the persisted store: supabase-js already owns
+  // session storage and refresh, and duplicating it is how you end up showing
+  // someone as signed in against a token that expired days ago.
+  const auth = useAuth();
+  const sync = useSync(auth.userId);
+  // Chosen explicitly by the user on the sign-in screen; not persisted, so the
+  // choice is re-offered next launch rather than silently stranding them local.
+  const [skippedAuth, setSkippedAuth] = useState(false);
   
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -561,6 +575,23 @@ export default function BizTrack() {
     }
   };
 
+  const resetSyncCursors = useStore(s => s.resetSyncCursors);
+
+  /**
+   * Sign out.
+   *
+   * Cursors MUST be cleared: they are per-account watermarks, and the next
+   * person to sign in on this device would otherwise conclude they had already
+   * pulled everything and see an empty account. Local records are deliberately
+   * left alone -- they may not be backed up yet, and deleting someone's books
+   * as a side effect of signing out is unforgivable.
+   */
+  const signOutOfAccount = async () => {
+    await signOut();
+    resetSyncCursors();
+    showToast("Signed out. Your records stay on this device.");
+  };
+
   const onboardingComplete = useStore(s => s.onboardingComplete);
   const setOnboardingComplete = useStore(s => s.setOnboardingComplete);
   const hasSeenGuide = useStore(s => s.hasSeenGuide);
@@ -582,7 +613,7 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, replaceBusinesses, migrationIssues, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const ctx = { businesses, replaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -608,6 +639,22 @@ export default function BizTrack() {
           <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => window.location.reload()}>Reload App</button>
         </div>
       </div>
+    );
+  }
+
+  // Wait for the session check before rendering anything, so an already
+  // signed-in user never sees a flash of the sign-in screen.
+  if (isBackendConfigured && !auth.ready) {
+    return <div style={{ ...S.shell, background: "#2C1810" }} />;
+  }
+
+  if (isBackendConfigured && !auth.session && !skippedAuth) {
+    return (
+      <AuthScreen
+        styles={S}
+        hasLocalData={businesses.length > 0}
+        onSkip={() => setSkippedAuth(true)}
+      />
     );
   }
 
