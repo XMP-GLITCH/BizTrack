@@ -37,7 +37,9 @@ export const useStore = create(
       setIsDarkMode: (isDarkMode) => set({ isDarkMode })
     }),
     {
-      name: 'biztrack-storage-v3', // bumping version to replace old structure
+      // NOTE: CURRENT_STORAGE_KEY in App.jsx and the splash script in
+      // index.html both hardcode this value. Change all three together.
+      name: 'biztrack-storage-v3',
     }
   )
 )

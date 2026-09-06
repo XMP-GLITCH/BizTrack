@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, List, History, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
+import { Home, BarChart2, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
 import { useStore } from "./store/useStore";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
@@ -8,8 +8,6 @@ import { requestNotificationPermission, sendLowStockNotification } from "./utils
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
 const COLOR_NAMES = ["Terracotta","Gold","Sage","Rose","Slate","Plum","Mint","Sand"];
 const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Accessories","Other"];
-
-const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
 const VERSION = "v1.5.9";
@@ -68,6 +66,42 @@ const dateLabel = (d) => {
   return d;
 };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+/* ─── DATA VALIDATION ──────────────────────────────────────────────────────── */
+const num = (v, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+// Validates and coerces an imported backup. Returns a clean array, or null if
+// the payload isn't usable at all. Never lets a malformed shape reach the store.
+const sanitizeBusinesses = (raw) => {
+  if (!Array.isArray(raw)) return null;
+  return raw.map((b) => ({
+    id: String(b?.id ?? uid()),
+    name: String(b?.name ?? "Untitled"),
+    category: String(b?.category ?? "Other"),
+    color: String(b?.color ?? COLORS[0]),
+    emoji: String(b?.emoji ?? "\u{1F6CD}\u{FE0F}"),
+    inventory: Array.isArray(b?.inventory) ? b.inventory.map((i) => ({
+      id: String(i?.id ?? uid()),
+      name: String(i?.name ?? "Item"),
+      qty: Math.max(0, num(i?.qty)),
+      cost: Math.max(0, num(i?.cost)),
+      price: Math.max(0, num(i?.price)),
+      sold: Math.max(0, num(i?.sold)),
+    })) : [],
+    sales: Array.isArray(b?.sales) ? b.sales.map((sale) => ({
+      ...sale,
+      id: String(sale?.id ?? uid()),
+      itemName: String(sale?.itemName ?? "Sale"),
+      qty: Math.max(0, num(sale?.qty)),
+      revenue: num(sale?.revenue),
+      cost: num(sale?.cost),
+      date: String(sale?.date ?? new Date().toISOString().slice(0, 10)),
+    })) : [],
+  }));
+};
 
 /* ─── SECURITY HELPERS ─────────────────────────────────────────────────────── */
 const hashPin = async (pin) => {
@@ -206,6 +240,10 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
 }
 
 /* ─── DATA RESCUE UTILITY ─────────────────────────────────────────────────── */
+// Keep in sync with the persist `name` in store/useStore.js.
+const CURRENT_STORAGE_KEY = 'biztrack-storage-v3';
+const LEGACY_STORAGE_KEYS = ['biztrack-storage-v4', 'biztrack-storage-v2', 'biztrack-storage'];
+
 function useRescueData(hydrated) {
   const [isRescuing, setIsRescuing] = useState(false);
 
@@ -216,8 +254,10 @@ function useRescueData(hydrated) {
     if (manual) setIsRescuing(true);
     console.log("[BizTrack] Running Emergency Data Rescue...");
 
-    // 1. Check LocalStorage
-    const keys = ['biztrack-storage-v4', 'biztrack-storage-v3'];
+    // 1. Check LocalStorage. The automatic pass only looks at LEGACY keys --
+    // scanning the live key would resurrect data the user just signed out of.
+    // A manual rescue (user tapped the button) may scan the live key too.
+    const keys = manual ? [...LEGACY_STORAGE_KEYS, CURRENT_STORAGE_KEY] : LEGACY_STORAGE_KEYS;
     for (const key of keys) {
       try {
         const raw = localStorage.getItem(key);
@@ -232,7 +272,7 @@ function useRescueData(hydrated) {
             return true;
           }
         }
-      } catch(e) {}
+      } catch { /* key unreadable, try the next one */ }
     }
 
     // 2. Check Raw IndexedDB
@@ -252,7 +292,7 @@ function useRescueData(hydrated) {
           const store = transaction.objectStore('keyval');
           let found = false;
 
-          ['biztrack-storage-v3', 'biztrack-storage-v4'].forEach(key => {
+          (manual ? [...LEGACY_STORAGE_KEYS, CURRENT_STORAGE_KEY] : LEGACY_STORAGE_KEYS).forEach(key => {
             const getReq = store.get(key);
             getReq.onsuccess = () => {
               const raw = getReq.result;
@@ -263,13 +303,13 @@ function useRescueData(hydrated) {
                   if (state && state.businesses?.length > 0) {
                     console.log(`[BizTrack] Found data in IDB: ${key}`);
                     useStore.setState({ ...state, onboardingComplete: true });
-                    localStorage.setItem('biztrack-storage-v3', raw);
+                    localStorage.setItem(CURRENT_STORAGE_KEY, raw);
                     found = true;
                     if (manual) alert("Data found and restored from IndexedDB!");
                     setIsRescuing(false);
                     resolve(true);
                   }
-                } catch(err) {}
+                } catch { /* not valid JSON, skip */ }
               }
             };
           });
@@ -282,7 +322,7 @@ function useRescueData(hydrated) {
             }
           };
         };
-      } catch(err) {
+      } catch {
         setIsRescuing(false);
         resolve(false);
       }
@@ -322,6 +362,7 @@ export default function BizTrack() {
       setDeferredPrompt(e);
       console.log("Install prompt captured!");
     };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
@@ -401,14 +442,16 @@ export default function BizTrack() {
     };
   }, []);
 
-  const businesses = useStore(s => s.businesses);
+  const storedBusinesses = useStore(s => s.businesses);
   const setBusinesses = useStore(s => s.setBusinesses);
 
-  // Safety Catch for Corrupted State
-  if (!businesses || !Array.isArray(businesses)) {
-    console.error("State Corruption Detected! Attempting recovery...");
-    return <div style={{ background: "#2C1810", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>Loading...</div>;
-  }
+  // Safety catch for corrupted state. We must NOT early-return here -- dozens of
+  // hooks follow, and bailing before them violates the rules of hooks and throws
+  // on the next render. Instead fall back to an empty array so every hook below
+  // still runs, and render the recovery screen after they have.
+  const isStateCorrupt = !Array.isArray(storedBusinesses);
+  const businesses = isStateCorrupt ? [] : storedBusinesses;
+  if (isStateCorrupt) console.error("State Corruption Detected! Showing recovery screen.");
 
   const currency = useStore(s => s.currency);
   const setCurrency = useStore(s => s.setCurrency);
@@ -515,6 +558,10 @@ export default function BizTrack() {
       };
     } else {
       const item = biz.inventory.find(i => String(i.id) === String(sale.itemId));
+      if (!(num(sale.qty) > 0)) {
+        showToast("Quantity must be greater than 0");
+        return;
+      }
       if (!item || item.qty < sale.qty) {
         showToast(`Not enough stock for ${item?.name || "item"}`);
         return;
@@ -575,6 +622,25 @@ export default function BizTrack() {
   const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
+
+  // Safe to early-return from here on: every hook above has already run.
+  if (isStateCorrupt) {
+    return (
+      <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
+        <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", alignItems: "center", padding: 40, textAlign: "center" }}>
+          <AlertTriangle size={48} color="#F0C040" style={{ marginBottom: 20 }} />
+          <h2 style={{ ...S.userName, color: "#FAF8F4", marginBottom: 8 }}>We couldn't read your data</h2>
+          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 32 }}>
+            Your saved records look damaged. Nothing has been deleted &mdash; try a rescue scan below.
+          </p>
+          <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810" }} onClick={() => checkRescue(true)}>
+            {isRescuing ? "Scanning device..." : "Try Data Rescue"}
+          </button>
+          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => window.location.reload()}>Reload App</button>
+        </div>
+      </div>
+    );
+  }
 
   if (!onboardingComplete) return <Onboarding ctx={ctx} deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />;
   if (isPinEnabled && !isUnlocked) return <PinLock ctx={ctx} onUnlock={() => setIsUnlocked(true)} />;
@@ -800,15 +866,15 @@ function BusinessScreen({ ctx }) {
       </div>
 
       <div style={S.tabContent}>
-        {bizTab === "overview" && <OverviewTab biz={activeBiz} stats={stats} lowStockThreshold={lowStockThreshold} setModal={setModal} />}
-        {bizTab === "inventory" && <InventoryTab biz={activeBiz} setModal={setModal} deleteInventoryItem={deleteInventoryItem} setRestockItemId={setRestockItemId} />}
+        {bizTab === "overview" && <OverviewTab biz={activeBiz} stats={stats} lowStockThreshold={lowStockThreshold} />}
+        {bizTab === "inventory" && <InventoryTab biz={activeBiz} setModal={setModal} deleteInventoryItem={deleteInventoryItem} setRestockItemId={setRestockItemId} lowStockThreshold={lowStockThreshold} />}
         {bizTab === "sales" && <SalesTab biz={activeBiz} setModal={setModal} />}
       </div>
     </div>
   );
 }
 
-function OverviewTab({ biz, stats, lowStockThreshold, setModal }) {
+function OverviewTab({ biz, stats, lowStockThreshold }) {
   const best = [...biz.inventory].sort((a, b) => b.sold - a.sold)[0];
   const lowStock = biz.inventory.filter((i) => i.qty <= lowStockThreshold);
   const recentSales = biz.sales.slice(0, 3);
@@ -872,7 +938,7 @@ function OverviewTab({ biz, stats, lowStockThreshold, setModal }) {
   );
 }
 
-function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId }) {
+function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId, lowStockThreshold }) {
   return (
     <div style={S.tabInner}>
       <button style={S.dashedBtn} onClick={() => setModal("addItem")}>+ Add New Item</button>
@@ -891,7 +957,7 @@ function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId }) 
             <div style={{ flex: 1 }}>
               <div style={S.invNameRow}>
                 <p style={S.invName}>{item.name}</p>
-                {item.qty <= 3 && <span style={S.lowBadge}>Low</span>}
+                {item.qty <= lowStockThreshold && <span style={S.lowBadge}>Low</span>}
               </div>
               <p style={S.invSub}>Cost: {fmt(item.cost)} · Asking: {fmt(item.price)}</p>
               <p style={S.invSub}>{item.qty} in stock · {item.sold} sold</p>
@@ -904,7 +970,14 @@ function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId }) 
             <div style={{ alignItems: "flex-end", display: "flex", flexDirection: "column", gap: 6 }}>
               <p style={S.invProfit}>+{fmt(profit)}/unit</p>
               <span style={S.marginBadge}>{margin}%</span>
-              <button style={S.deleteBtn} onClick={() => deleteInventoryItem(biz.id, item.id)}>✕</button>
+              <button
+                style={S.deleteBtn}
+                onClick={() => {
+                  if (confirm(`Remove "${item.name}" from inventory? This cannot be undone.`)) {
+                    deleteInventoryItem(biz.id, item.id);
+                  }
+                }}
+              >✕</button>
             </div>
           </div>
         );
@@ -1056,7 +1129,7 @@ function AnalyticsScreen({ ctx }) {
 
 /* ─── SETTINGS SCREEN ───────────────────────────────────────────────────────── */
 function SettingsScreen({ ctx }) {
-  const { setScreen, businesses, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
+  const { setScreen, businesses, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
   const currencies = ["XAF","NGN","GHS","KES","USD","EUR"];
 
   return (
@@ -1343,7 +1416,6 @@ function ModalShell({ onClose, title, children }) {
 function AddBizModal({ ctx }) {
   const { setModal, addBusiness } = ctx;
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [category, setCategory] = useState("Crochet");
   const [color, setColor] = useState(COLORS[0]);
   const [emoji, setEmoji] = useState("🧶");
@@ -1398,8 +1470,12 @@ function AddItemModal({ ctx }) {
   const profit = cost && price ? Number(price) - Number(cost) : null;
 
   const submit = () => {
-    if (!name.trim() || !qty || !cost || !price) return;
-    addInventoryItem(activeBizId, { name: name.trim(), qty: Number(qty), cost: Number(cost), price: Number(price) });
+    if (!name.trim()) return alert("Please enter an item name.");
+    const q = num(qty, NaN), c = num(cost, NaN), p = num(price, NaN);
+    if (!(q > 0)) return alert("Quantity must be greater than 0.");
+    if (!(c >= 0)) return alert("Cost cannot be negative.");
+    if (!(p > 0)) return alert("Selling price must be greater than 0.");
+    addInventoryItem(activeBizId, { name: name.trim(), qty: q, cost: c, price: p });
     setModal(null);
   };
 
@@ -1522,6 +1598,8 @@ function AddSaleModal({ ctx }) {
       } : null);
 
   const submit = () => {
+    if (!(num(qty, NaN) > 0)) return alert("Quantity must be greater than 0.");
+    if (!(num(actualPrice, NaN) >= 0)) return alert("Please enter a valid selling price.");
     if (tab === "inventory") {
       if (!itemId || !qty || !actualPrice) return;
       addSale(activeBiz.id, { itemId: String(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note, isCustom: false });
@@ -1741,17 +1819,6 @@ function Toast({ msg, onDismiss }) {
       <div style={{ background: "rgba(44, 24, 16, 0.95)", color: "#FAF9F7", padding: "12px 24px", borderRadius: 30, fontSize: 13, fontWeight: 600, boxShadow: "0 10px 25px rgba(0,0,0,0.3)", animation: "toastIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards", cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)" }}>
         {msg}
       </div>
-      <style>{`
-        @keyframes toastIn {
-          from { opacity: 0; transform: translateY(20px) scale(0.9); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .spin { animation: spin 1s linear infinite; }
-      `}</style>
     </div>
   );
 }
@@ -1759,7 +1826,7 @@ function Toast({ msg, onDismiss }) {
 /* ─── BOTTOM NAV ────────────────────────────────────────────────────────────── */
 /* ─── BOTTOM NAV ────────────────────────────────────────────────────────────── */
 function BottomNav({ ctx }) {
-  const { screen, setScreen, setModal } = ctx;
+  const { screen, setScreen } = ctx;
   const tabs = [
     { id: "home", icon: <Home size={22} />, label: "Home" },
     { id: "analytics", icon: <div id="nav-analytics"><BarChart2 size={22} /></div>, label: "Analytics" },
@@ -1791,7 +1858,7 @@ function AboutScreen({ ctx }) {
     { icon: <Store size={20} />, title: "Multi-Business Management", desc: "Track and manage multiple business ventures from a single unified dashboard." },
     { icon: <Package size={20} />, title: "Smart Inventory Tracking", desc: "Real-time stock monitoring with intelligent low-stock alerts and cost-per-unit analysis." },
     { icon: <TrendingUp size={20} />, title: "Performance Analytics", desc: "Visualize your growth with profit rankings, revenue charts, and detailed business insights." },
-    { icon: <Lock size={20} />, title: "Secure & Private", desc: "Your data stays on your device. Protected by industrial-grade PIN encryption." },
+    { icon: <Lock size={20} />, title: "Private by default", desc: "Your records stay on your device, with an optional PIN lock to keep casual eyes out." },
     { icon: <Cloud size={20} />, title: "Local-First / PWA Ready", desc: "Install BizTrack on your home screen for a native experience that works offline." },
     { icon: <Sparkles size={20} />, title: "Custom Sales Entry", desc: "Flexible recording for both inventoried products and custom one-off services." }
   ];
@@ -1927,14 +1994,18 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
   const handleImport = () => {
     try {
       const data = JSON.parse(importData);
-      if (data.businesses) setBusinesses(data.businesses);
+      if (data.businesses !== undefined) {
+        const clean = sanitizeBusinesses(data.businesses);
+        if (!clean) return alert("That backup code is missing or has damaged business data.");
+        setBusinesses(clean);
+      }
       if (data.userName) setUserName(data.userName);
       if (data.userEmail) setUserEmail(data.userEmail);
       if (data.currency) setCurrency(data.currency);
       if (data.lowStockThreshold) setLowStockThreshold(data.lowStockThreshold);
       alert("Data imported successfully!");
       setShowImport(false);
-    } catch (e) {
+    } catch {
       alert("Invalid backup code.");
     }
   };
@@ -2468,11 +2539,15 @@ function AccountScreen({ ctx }) {
                if (!code) return;
                try {
                  const data = JSON.parse(code);
-                 if (data.businesses) ctx.setBusinesses(data.businesses);
+                 if (data.businesses !== undefined) {
+                   const clean = sanitizeBusinesses(data.businesses);
+                   if (!clean) return alert("That backup code is missing or has damaged business data.");
+                   ctx.setBusinesses(clean);
+                 }
                  if (data.userName) ctx.setUserName(data.userName);
                  if (data.userEmail) ctx.setUserEmail(data.userEmail);
                  showToast("Data restored!");
-               } catch (e) {
+               } catch {
                  alert("Invalid backup code.");
                }
              }}>

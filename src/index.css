@@ -59,3 +59,17 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* App-wide animations. These must live here, not inside a component's inline
+   <style>, or they only exist while that component happens to be mounted. */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spin { animation: spin 1s linear infinite; }
