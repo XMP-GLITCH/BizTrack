@@ -23,7 +23,7 @@
 
 import { newId } from "./ids.js";
 import { toMinor, normalizeCurrency, DEFAULT_CURRENCY } from "./money.js";
-import { MOVEMENT } from "./inventory.js";
+import { MOVEMENT, deriveInventory } from "./inventory.js";
 import {
   makeBusiness,
   makeItem,
@@ -155,15 +155,102 @@ export function toCurrentBusiness(raw, currency = DEFAULT_CURRENCY) {
   return sanitizeBusiness(raw);
 }
 
-/** Whole-store migration, used by the zustand persist middleware. */
+/**
+ * Whole-store migration, used by the zustand persist middleware.
+ *
+ * Deliberately total: it must never throw, because a throw here happens on a
+ * real user's device holding their only copy of their books. One unreadable
+ * business must not cost them the others, so each is converted in isolation and
+ * anything that fails is preserved verbatim under `unreadable` for recovery
+ * rather than dropped.
+ */
 export function migrateState(state) {
   const currency = normalizeCurrency(state?.currency || DEFAULT_CURRENCY);
   const raw = Array.isArray(state?.businesses) ? state.businesses : [];
+
+  const businesses = [];
+  const unreadable = [];
+  for (const b of raw) {
+    try {
+      const converted = toCurrentBusiness(b, currency);
+      if (converted) businesses.push(converted);
+      else unreadable.push(b);
+    } catch (err) {
+      console.error("[BizTrack] Could not convert a business; preserving it raw.", err);
+      unreadable.push(b);
+    }
+  }
+
   return {
     ...state,
     currency,
-    businesses: raw.map((b) => toCurrentBusiness(b, currency)).filter(Boolean),
+    businesses,
+    ...(unreadable.length ? { unreadableBusinesses: unreadable } : {}),
   };
+}
+
+/** Totals for one business in EITHER shape, for comparing across a migration. */
+function summarize(business) {
+  if (!business || typeof business !== "object") return { items: 0, sales: 0, units: 0 };
+  const legacy = isLegacyBusiness(business);
+  const items = legacy
+    ? (Array.isArray(business.inventory) ? business.inventory : [])
+    : (Array.isArray(business.items) ? business.items : []).filter((i) => !i?.deletedAt);
+  const sales = Array.isArray(business.sales) ? business.sales : [];
+  return {
+    items: items.length,
+    sales: sales.length,
+    units: sales.reduce((sum, s) => sum + Math.max(0, Math.round(num(s?.qty))), 0),
+  };
+}
+
+/**
+ * Runtime check that a migration lost nothing.
+ *
+ * The tests prove this for known inputs; this proves it for the actual data on
+ * the actual device, because that is the copy that matters. Counts and per-item
+ * quantities must match exactly -- any difference is real loss, not a rounding
+ * artefact -- so a mismatch stops us from quietly declaring success.
+ */
+export function verifyMigration(sourceBusinesses, migratedBusinesses) {
+  const issues = [];
+  const source = Array.isArray(sourceBusinesses) ? sourceBusinesses : [];
+  const migrated = Array.isArray(migratedBusinesses) ? migratedBusinesses : [];
+
+  if (source.length !== migrated.length) {
+    issues.push(`business count changed: ${source.length} before, ${migrated.length} after`);
+  }
+
+  source.forEach((before, i) => {
+    const after = migrated[i];
+    const label = String(before?.name ?? `business ${i + 1}`);
+    if (!after) {
+      issues.push(`"${label}" is missing after migration`);
+      return;
+    }
+
+    const a = summarize(before);
+    const b = summarize(after);
+    if (a.items !== b.items) issues.push(`"${label}": ${a.items} items before, ${b.items} after`);
+    if (a.sales !== b.sales) issues.push(`"${label}": ${a.sales} sales before, ${b.sales} after`);
+    if (a.units !== b.units) issues.push(`"${label}": ${a.units} units sold before, ${b.units} after`);
+
+    // Per-item stock on hand is the number the owner actually checks.
+    if (isLegacyBusiness(before)) {
+      const derived = deriveInventory(after);
+      for (const legacyItem of (Array.isArray(before.inventory) ? before.inventory : [])) {
+        const name = String(legacyItem?.name ?? "Item");
+        const match = derived.find((d) => d.name === name);
+        const expected = Math.round(num(legacyItem?.qty));
+        if (!match) issues.push(`"${label}": item "${name}" is missing after migration`);
+        else if (match.qty !== expected) {
+          issues.push(`"${label}": "${name}" had ${expected} in stock, now ${match.qty}`);
+        }
+      }
+    }
+  });
+
+  return { ok: issues.length === 0, issues };
 }
 
 /**

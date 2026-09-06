@@ -5,7 +5,7 @@ import { newId } from '../domain/ids.js'
 import { DEFAULT_CURRENCY, normalizeCurrency } from '../domain/money.js'
 import { MOVEMENT, deriveInventory, deriveItemState } from '../domain/inventory.js'
 import { SCHEMA_VERSION, makeBusiness, makeItem, makeSale, makeStockMovement } from '../domain/schema.js'
-import { migrateState } from '../domain/migrate.js'
+import { migrateState, verifyMigration } from '../domain/migrate.js'
 
 /**
  * Store.
@@ -20,6 +20,47 @@ import { migrateState } from '../domain/migrate.js'
  * distinguish "deleted" from "not seen yet" -- so records get a deletedAt and
  * the selectors filter them out.
  */
+
+export const STORAGE_KEY = 'biztrack-storage-v3'
+
+/**
+ * Untouched copy of the pre-ledger data, written once immediately before the
+ * first migration and never overwritten afterwards.
+ *
+ * The migration is covered by tests, but tests run on inputs we thought of.
+ * This runs on the only copy of a real person's books, so there is a verbatim
+ * original to fall back on no matter what happens next.
+ */
+export const SNAPSHOT_KEY = 'biztrack-pre-ledger-backup'
+
+function preserveSnapshot(persisted, version) {
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (localStorage.getItem(SNAPSHOT_KEY)) return // never clobber the original
+    localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      fromVersion: version ?? 0,
+      state: persisted,
+    }))
+    console.info('[BizTrack] Saved a pre-upgrade snapshot of your data.')
+  } catch (err) {
+    // Out of quota, or storage disabled. Migration still proceeds: refusing to
+    // migrate would leave the app reading a shape it no longer understands,
+    // which looks exactly like data loss to the person holding the phone.
+    console.error('[BizTrack] Could not save a pre-upgrade snapshot.', err)
+  }
+}
+
+/** The raw pre-upgrade snapshot, if one was taken. */
+export function readSnapshot() {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    const raw = localStorage.getItem(SNAPSHOT_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
 
 const now = () => new Date().toISOString()
 const touch = (record) => ({ ...record, updatedAt: now() })
@@ -54,6 +95,10 @@ export const useStore = create(
       /* ── local device lock ─────────────────────────────────────────────── */
       // Not encryption. A convenience lock over local data; real protection
       // arrives with server-side auth.
+      // Set by the persist migration below when it could not complete cleanly.
+      migrationFailed: false,
+      migrationIssues: null,
+
       hashedPin: null,
       hashedRecoveryKey: null,
       isPinEnabled: false,
@@ -185,12 +230,40 @@ export const useStore = create(
       setLockoutUntil: (lockoutUntil) => set({ lockoutUntil }),
     }),
     {
-      name: 'biztrack-storage-v3',
+      name: STORAGE_KEY,
       version: SCHEMA_VERSION,
       // Proper versioned migration. Bumping the storage KEY is what orphaned
       // data in earlier releases and forced the emergency rescue system; the
       // key stays fixed from here and the version does the work.
-      migrate: (persisted, version) => (version < SCHEMA_VERSION ? migrateState(persisted) : persisted),
+      //
+      // This function must never throw. It runs on a real device holding data
+      // that exists nowhere else, so every outcome is handled explicitly:
+      // snapshot first, convert defensively, then verify the result against the
+      // source before accepting it.
+      migrate: (persisted, version) => {
+        if (version >= SCHEMA_VERSION) return persisted
+
+        preserveSnapshot(persisted, version)
+
+        try {
+          const next = migrateState(persisted)
+          const report = verifyMigration(persisted?.businesses, next.businesses)
+
+          if (!report.ok) {
+            // The data is still here; something just does not add up. Surface it
+            // rather than reporting a clean upgrade, and keep the snapshot.
+            console.error('[BizTrack] Migration check found discrepancies:', report.issues)
+            return { ...next, migrationIssues: report.issues }
+          }
+          return next
+        } catch (err) {
+          // Nothing is deleted: the original is in the snapshot, and the app
+          // shows a recovery screen instead of an empty dashboard that would
+          // invite the user to start over.
+          console.error('[BizTrack] Migration failed; original data preserved.', err)
+          return { ...persisted, businesses: [], migrationFailed: true }
+        }
+      },
     }
   )
 )

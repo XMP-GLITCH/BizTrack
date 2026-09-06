@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { toMinor, toMajor, formatMoney, marginPercent } from "./money.js";
 import { deriveItemState, deriveInventory, MOVEMENT } from "./inventory.js";
 import { calcBizStats } from "./stats.js";
-import { migrateLegacyBusiness, parseBackup, migrateState } from "./migrate.js";
+import { migrateLegacyBusiness, parseBackup, migrateState, verifyMigration } from "./migrate.js";
 import { makeBusiness, sanitizeBusiness, isLegacyBusiness } from "./schema.js";
 
 /* ── money ─────────────────────────────────────────────────────────────────── */
@@ -230,4 +230,89 @@ test("orphan stock movements are dropped on import", () => {
   const b = makeBusiness({ name: "X" });
   const dirty = { ...b, stockMovements: [{ id: "m1", itemId: "ghost", delta: 5, reason: "initial", occurredAt: "2026-01-01T00:00:00Z" }] };
   assert.equal(sanitizeBusiness(dirty).stockMovements.length, 0);
+});
+
+/* ── data-safety guarantees ────────────────────────────────────────────────── */
+
+test("migration never throws, whatever it is handed", () => {
+  const hostile = [
+    null, undefined, 0, "", "a string", [], {},
+    { businesses: null }, { businesses: 0 }, { businesses: {} },
+    { businesses: [null, undefined, 0, "x", []] },
+    { businesses: [{ inventory: null, sales: null }] },
+    { businesses: [{ inventory: [null, { qty: "abc", cost: {}, price: [] }], sales: [null, { qty: -5 }] }] },
+    { businesses: [{ inventory: [{ name: "X", qty: Infinity, cost: NaN, price: -1 }], sales: [{ itemName: "X", qty: 1e9 }] }] },
+    { currency: 12345, businesses: [{ name: {}, inventory: [], sales: [] }] },
+  ];
+  for (const input of hostile) {
+    assert.doesNotThrow(() => migrateState(input), `threw on ${JSON.stringify(input)}`);
+    const out = migrateState(input);
+    assert.ok(Array.isArray(out.businesses), `businesses not an array for ${JSON.stringify(input)}`);
+  }
+});
+
+test("one unreadable business does not cost the user the others", () => {
+  const poison = { name: "Poison", get inventory() { throw new Error("unreadable"); }, sales: [] };
+  const out = migrateState({ businesses: [legacy, poison, { ...legacy, name: "Third" }], currency: "XAF" });
+  assert.equal(out.businesses.length, 2, "readable businesses survive");
+  assert.equal(out.unreadableBusinesses.length, 1, "the bad one is preserved verbatim, not dropped");
+  assert.equal(out.businesses[0].name, "Sabi Crochet");
+  assert.equal(out.businesses[1].name, "Third");
+});
+
+test("verification passes on a clean migration", () => {
+  const out = migrateState({ businesses: [legacy], currency: "XAF" });
+  const report = verifyMigration([legacy], out.businesses);
+  assert.equal(report.ok, true, report.issues.join("; "));
+  assert.deepEqual(report.issues, []);
+});
+
+test("verification catches a dropped business", () => {
+  const report = verifyMigration([legacy, { ...legacy, name: "Second" }], migrateState({ businesses: [legacy] }).businesses);
+  assert.equal(report.ok, false);
+  assert.match(report.issues.join(" "), /business count changed/);
+});
+
+test("verification catches a lost item, sale, or wrong quantity", () => {
+  const out = migrateState({ businesses: [legacy], currency: "XAF" });
+
+  const missingItem = structuredClone(out.businesses);
+  missingItem[0].items = missingItem[0].items.slice(1);
+  assert.equal(verifyMigration([legacy], missingItem).ok, false);
+
+  const missingSale = structuredClone(out.businesses);
+  missingSale[0].sales = missingSale[0].sales.slice(1);
+  assert.match(verifyMigration([legacy], missingSale).issues.join(" "), /sales before/);
+
+  const wrongQty = structuredClone(out.businesses);
+  wrongQty[0].stockMovements = wrongQty[0].stockMovements.filter((m) => m.reason !== "initial");
+  assert.match(verifyMigration([legacy], wrongQty).issues.join(" "), /in stock, now/);
+});
+
+test("every sale survives migration even when its item is unmatched", () => {
+  const messy = {
+    ...legacy,
+    inventory: [],                       // every item deleted
+    sales: legacy.sales,                 // but the sales remain
+  };
+  const out = migrateState({ businesses: [messy], currency: "XAF" });
+  assert.equal(out.businesses[0].sales.length, legacy.sales.length);
+  assert.equal(
+    calcBizStats(out.businesses[0]).revenue,
+    legacy.sales.reduce((s, x) => s + x.revenue, 0),
+    "revenue preserved with no items to link to",
+  );
+  assert.equal(verifyMigration([messy], out.businesses).ok, true);
+});
+
+test("re-running migration on migrated data changes nothing", () => {
+  const once = migrateState({ businesses: [legacy], currency: "XAF" });
+  const twice = migrateState(once);
+  assert.equal(twice.businesses.length, once.businesses.length);
+  assert.equal(calcBizStats(twice.businesses[0]).revenue, calcBizStats(once.businesses[0]).revenue);
+  assert.deepEqual(
+    deriveInventory(twice.businesses[0]).map((i) => [i.name, i.qty, i.avgCost]),
+    deriveInventory(once.businesses[0]).map((i) => [i.name, i.qty, i.avgCost]),
+  );
+  assert.equal(verifyMigration(once.businesses, twice.businesses).ok, true);
 });

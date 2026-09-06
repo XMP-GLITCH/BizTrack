@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Home, BarChart2, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
-import { useStore, selectBusinesses, selectInventory } from "./store/useStore";
+import { useStore, selectBusinesses, selectInventory, readSnapshot, STORAGE_KEY } from "./store/useStore";
 import { formatMoney, toMinor, toMajor, marginPercent, CURRENCIES } from "./domain/money.js";
 import { calcBizStats, calcPortfolioStats, saleRevenue, saleCost, saleProfit, saleDiscount, getStatus } from "./domain/stats.js";
 import { deriveInventory, hasStockDiscrepancy } from "./domain/inventory.js";
-import { parseBackup } from "./domain/migrate.js";
+import { parseBackup, migrateState, verifyMigration } from "./domain/migrate.js";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
@@ -58,6 +58,29 @@ const dateLabel = (occurredAt) => {
 const num = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+};
+
+const downloadJson = (data, filename) => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+/** Hands back the verbatim pre-upgrade copy of the user's data. */
+const downloadSnapshot = () => {
+  const snapshot = readSnapshot();
+  if (!snapshot) {
+    alert("No pre-upgrade backup was found on this device.");
+    return false;
+  }
+  downloadJson(snapshot, `BizTrack_PreUpgrade_Backup_${String(snapshot.savedAt).slice(0, 10)}.json`);
+  return true;
 };
 
 /** Per-unit profit and margin for an inventory item, guarding zero prices. */
@@ -208,12 +231,29 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
 }
 
 /* ─── DATA RESCUE UTILITY ─────────────────────────────────────────────────── */
-// Keep in sync with the persist `name` in store/useStore.js.
-const CURRENT_STORAGE_KEY = 'biztrack-storage-v3';
+// Single source of truth lives in the store.
+const CURRENT_STORAGE_KEY = STORAGE_KEY;
 const LEGACY_STORAGE_KEYS = ['biztrack-storage-v4', 'biztrack-storage-v2', 'biztrack-storage'];
 
 function useRescueData(hydrated) {
   const [isRescuing, setIsRescuing] = useState(false);
+
+  /**
+   * Adopt a recovered blob.
+   *
+   * Rescued data is nearly always in the pre-ledger shape, so it MUST go
+   * through the same migration as everything else. Writing it into the store
+   * as-is leaves `items` and `unitPrice` undefined, and the app renders every
+   * business with no inventory and zero revenue -- indistinguishable from total
+   * data loss, triggered by the one button a panicking user would press.
+   */
+  const adoptRescuedState = (state) => {
+    const migrated = migrateState(state);
+    const report = verifyMigration(state?.businesses, migrated.businesses);
+    if (!report.ok) console.error("[BizTrack] Rescue check found discrepancies:", report.issues);
+    useStore.setState({ ...migrated, onboardingComplete: true });
+    return migrated.businesses.length;
+  };
 
   const checkRescue = async (manual = false) => {
     const current = useStore.getState();
@@ -234,8 +274,8 @@ function useRescueData(hydrated) {
           const state = data.state;
           if (state && state.businesses?.length > 0) {
             console.log(`[BizTrack] Found data in LS: ${key}`);
-            useStore.setState({ ...state, onboardingComplete: true });
-            if (manual) alert("Data found and restored!");
+            const count = adoptRescuedState(state);
+            if (manual) alert(`Data found and restored: ${count} business${count === 1 ? "" : "es"}.`);
             setIsRescuing(false);
             return true;
           }
@@ -270,10 +310,9 @@ function useRescueData(hydrated) {
                   const state = data.state;
                   if (state && state.businesses?.length > 0) {
                     console.log(`[BizTrack] Found data in IDB: ${key}`);
-                    useStore.setState({ ...state, onboardingComplete: true });
-                    localStorage.setItem(CURRENT_STORAGE_KEY, raw);
+                    const count = adoptRescuedState(state);
                     found = true;
-                    if (manual) alert("Data found and restored from IndexedDB!");
+                    if (manual) alert(`Data found and restored from IndexedDB: ${count} business${count === 1 ? "" : "es"}.`);
                     setIsRescuing(false);
                     resolve(true);
                   }
@@ -411,6 +450,8 @@ export default function BizTrack() {
   }, []);
 
   const storedBusinesses = useStore(s => s.businesses);
+  const migrationFailed = useStore(s => s.migrationFailed);
+  const migrationIssues = useStore(s => s.migrationIssues);
   const replaceBusinesses = useStore(s => s.replaceBusinesses);
   const storeAddBusiness = useStore(s => s.addBusiness);
   const storeDeleteBusiness = useStore(s => s.deleteBusiness);
@@ -541,21 +582,27 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, replaceBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const ctx = { businesses, replaceBusinesses, migrationIssues, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
   // Safe to early-return from here on: every hook above has already run.
-  if (isStateCorrupt) {
+  if (isStateCorrupt || migrationFailed) {
     return (
       <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
         <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", alignItems: "center", padding: 40, textAlign: "center" }}>
           <AlertTriangle size={48} color="#F0C040" style={{ marginBottom: 20 }} />
-          <h2 style={{ ...S.userName, color: "#FAF8F4", marginBottom: 8 }}>We couldn't read your data</h2>
-          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 32 }}>
-            Your saved records look damaged. Nothing has been deleted &mdash; try a rescue scan below.
+          <h2 style={{ ...S.userName, color: "#FAF8F4", marginBottom: 8 }}>We couldn't open your records</h2>
+          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
+            <strong>Nothing has been deleted.</strong> Your data is still on this device.
           </p>
-          <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810" }} onClick={() => checkRescue(true)}>
+          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 32 }}>
+            Download a copy first, then try a rescue scan. Please don't clear the app or reinstall it.
+          </p>
+          <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810" }} onClick={downloadSnapshot}>
+            Download my data
+          </button>
+          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => checkRescue(true)}>
             {isRescuing ? "Scanning device..." : "Try Data Rescue"}
           </button>
           <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => window.location.reload()}>Reload App</button>
@@ -645,7 +692,7 @@ export default function BizTrack() {
 
 /* ─── HOME SCREEN ───────────────────────────────────────────────────────────── */
 function HomeScreen({ ctx }) {
-  const { businesses, openBiz, setModal, lowStockThreshold, userName, setScreen, userAvatar } = ctx;
+  const { businesses, openBiz, setModal, lowStockThreshold, userName, setScreen, userAvatar, migrationIssues } = ctx;
   const totals = calcPortfolioStats(businesses);
   const allLowStock = businesses.flatMap((b) =>
     deriveInventory(b)
@@ -687,6 +734,25 @@ function HomeScreen({ ctx }) {
           </div>
         </div>
       </div>
+
+      {/* The upgrade completed but the numbers didn't reconcile. Say so plainly
+          and put the untouched original one tap away. */}
+      {migrationIssues?.length > 0 && (
+        <div style={{ ...S.alertBanner, background: "#FDECEA", border: "1px solid #C0392B" }}>
+          <AlertTriangle style={S.alertIcon} size={18} color="#C0392B" />
+          <div style={{ flex: 1 }}>
+            <p style={{ ...S.alertTitle, color: "#C0392B" }}>Please check your numbers</p>
+            <p style={S.alertSub}>
+              Some totals changed during the last app update. Nothing was deleted, and a copy of
+              your original data is saved on this device.
+            </p>
+            <button
+              style={{ ...S.textBtn, color: "#C0392B", marginTop: 8 }}
+              onClick={downloadSnapshot}
+            >Download original data</button>
+          </div>
+        </div>
+      )}
 
       {/* LOW STOCK BANNER */}
       {allLowStock.length > 0 && (
@@ -2515,6 +2581,15 @@ function AccountScreen({ ctx }) {
                </div>
              </div>
              <div style={S.settingsDivider} />
+             <div style={S.settingsDivider} />
+             <div style={S.settingsRow} onClick={downloadSnapshot}>
+               <Shield size={20} color="#5C7A8B" />
+               <div style={{ flex: 1 }}>
+                 <p style={S.settingsRowLabel}>Pre-Upgrade Backup</p>
+                 <p style={S.settingsRowSub}>Download your data exactly as it was before the last update.</p>
+               </div>
+             </div>
+             <div style={S.settingsDivider} />
              <div style={S.settingsRow} onClick={() => {
                const code = prompt("Paste your backup code here:");
                if (!code) return;
@@ -2597,10 +2672,14 @@ function AccountScreen({ ctx }) {
         <button 
           style={{ ...S.ghostBtn, color: "#C0392B", borderColor: "#FDECEA", marginTop: 12, borderStyle: "dashed" }}
           onClick={() => {
-            if (confirm("🚨 FACTORY RESET: This will permanently delete all businesses, sales, and inventory data. This cannot be undone. Continue?")) {
-              localStorage.clear();
-              window.location.reload();
+            if (!confirm("🚨 FACTORY RESET: This will permanently delete all businesses, sales, and inventory data. This cannot be undone. Continue?")) return;
+            // Last chance to walk away with a copy, including the pre-upgrade one.
+            if (readSnapshot() && confirm("Download a copy of your data before erasing it?")) {
+              downloadSnapshot();
             }
+            if (!confirm("Type-free final check: erase everything on this device now?")) return;
+            localStorage.clear();
+            window.location.reload();
           }}
         >
           Wipe All Data & Reset App
