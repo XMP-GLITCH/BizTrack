@@ -52,8 +52,14 @@
 
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <script type="text/javascript">
+      // The CDN is unreachable offline -- which for a PWA is a normal state, not
+      // an edge case -- so guard the init instead of throwing on every load.
       (function(){
-          emailjs.init({ publicKey: "dnWW8IiQzni2_D7eN" });
+        if (typeof emailjs === "undefined") {
+          console.warn("[BizTrack] EmailJS unavailable; PIN reset by email is disabled.");
+          return;
+        }
+        emailjs.init({ publicKey: "dnWW8IiQzni2_D7eN" });
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">

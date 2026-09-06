@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Home, BarChart2, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
-import { useStore } from "./store/useStore";
+import { useStore, selectBusinesses, selectInventory } from "./store/useStore";
+import { formatMoney, toMinor, toMajor, marginPercent, CURRENCIES } from "./domain/money.js";
+import { calcBizStats, calcPortfolioStats, saleRevenue, saleCost, saleProfit, saleDiscount, getStatus } from "./domain/stats.js";
+import { deriveInventory, hasStockDiscrepancy } from "./domain/inventory.js";
+import { parseBackup } from "./domain/migrate.js";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
@@ -31,77 +35,36 @@ const UPDATE_LOG = [
 ];
 
 /* ─── HELPERS ──────────────────────────────────────────────────────────────── */
-const fmt = (n) => {
-  const activeCurrency = useStore.getState().currency || "XAF";
-  return new Intl.NumberFormat("en-US", {
-    style: 'currency',
-    currency: activeCurrency,
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0
-  }).format(Math.round(n));
-};
+// Amounts are integers in a currency's minor unit. Business-scoped call sites
+// pass that business's currency; portfolio-level totals fall back to the
+// account default.
+const fmt = (minor, currency) => formatMoney(minor, currency || useStore.getState().currency);
 
-const calcBizStats = (biz) => {
-  const revenue = biz.sales.reduce((s, sale) => s + sale.revenue, 0);
-  const cogs = biz.sales.reduce((s, sale) => s + sale.cost, 0);
-  const profit = revenue - cogs;
-  const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(0) : 0;
-  return { revenue, cogs, profit, margin };
-};
-const getStatus = (margin) => {
-  if (margin >= 30) return "profitable";
-  if (margin >= 10) return "break-even";
-  return "losing";
-};
 const STATUS_STYLE = {
   profitable: { bg: "#E8F5E3", text: "#3A7D2C", label: "Profitable" },
   "break-even": { bg: "#FFF8E1", text: "#8B6914", label: "Break Even" },
   losing: { bg: "#FDECEA", text: "#C0392B", label: "Losing" },
 };
-const dateLabel = (d) => {
+
+const dateLabel = (occurredAt) => {
+  const d = String(occurredAt || "").slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   if (d === today) return "Today";
   if (d === yesterday) return "Yesterday";
   return d;
 };
-const uid = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
 
-/* ─── DATA VALIDATION ──────────────────────────────────────────────────────── */
 const num = (v, fallback = 0) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
 
-// Validates and coerces an imported backup. Returns a clean array, or null if
-// the payload isn't usable at all. Never lets a malformed shape reach the store.
-const sanitizeBusinesses = (raw) => {
-  if (!Array.isArray(raw)) return null;
-  return raw.map((b) => ({
-    id: String(b?.id ?? uid()),
-    name: String(b?.name ?? "Untitled"),
-    category: String(b?.category ?? "Other"),
-    color: String(b?.color ?? COLORS[0]),
-    emoji: String(b?.emoji ?? "\u{1F6CD}\u{FE0F}"),
-    inventory: Array.isArray(b?.inventory) ? b.inventory.map((i) => ({
-      id: String(i?.id ?? uid()),
-      name: String(i?.name ?? "Item"),
-      qty: Math.max(0, num(i?.qty)),
-      cost: Math.max(0, num(i?.cost)),
-      price: Math.max(0, num(i?.price)),
-      sold: Math.max(0, num(i?.sold)),
-    })) : [],
-    sales: Array.isArray(b?.sales) ? b.sales.map((sale) => ({
-      ...sale,
-      id: String(sale?.id ?? uid()),
-      itemName: String(sale?.itemName ?? "Sale"),
-      qty: Math.max(0, num(sale?.qty)),
-      revenue: num(sale?.revenue),
-      cost: num(sale?.cost),
-      date: String(sale?.date ?? new Date().toISOString().slice(0, 10)),
-    })) : [],
-  }));
-};
+/** Per-unit profit and margin for an inventory item, guarding zero prices. */
+const itemEconomics = (item) => ({
+  profit: item.unitPrice - item.avgCost,
+  margin: marginPercent(item.unitPrice, item.avgCost),
+});
 
 /* ─── SECURITY HELPERS ─────────────────────────────────────────────────────── */
 const hashPin = async (pin) => {
@@ -151,6 +114,11 @@ const sendResetEmail = async (email, name, code) => {
     return true; 
   }
   
+  if (!window.emailjs) {
+    alert("Email recovery needs an internet connection. Use your 8-character Recovery Key instead.");
+    return false;
+  }
+
   try {
     const res = await window.emailjs.send(
       EMAILJS_CONFIG.SERVICE_ID,
@@ -443,14 +411,22 @@ export default function BizTrack() {
   }, []);
 
   const storedBusinesses = useStore(s => s.businesses);
-  const setBusinesses = useStore(s => s.setBusinesses);
+  const replaceBusinesses = useStore(s => s.replaceBusinesses);
+  const storeAddBusiness = useStore(s => s.addBusiness);
+  const storeDeleteBusiness = useStore(s => s.deleteBusiness);
+  const storeAddItem = useStore(s => s.addItem);
+  const storeDeleteItem = useStore(s => s.deleteItem);
+  const storeRestockItem = useStore(s => s.restockItem);
+  const storeRecordSale = useStore(s => s.recordSale);
 
   // Safety catch for corrupted state. We must NOT early-return here -- dozens of
   // hooks follow, and bailing before them violates the rules of hooks and throws
   // on the next render. Instead fall back to an empty array so every hook below
   // still runs, and render the recovery screen after they have.
   const isStateCorrupt = !Array.isArray(storedBusinesses);
-  const businesses = isStateCorrupt ? [] : storedBusinesses;
+  // Soft-deleted records stay in the store so their tombstones can sync one day;
+  // everything the UI touches goes through the live view.
+  const businesses = isStateCorrupt ? [] : selectBusinesses({ businesses: storedBusinesses });
   if (isStateCorrupt) console.error("State Corruption Detected! Showing recovery screen.");
 
   const currency = useStore(s => s.currency);
@@ -493,108 +469,54 @@ export default function BizTrack() {
   const openBiz = (id) => { setActiveBizId(id); setBizTab("overview"); setScreen("business"); };
 
   const addBusiness = (data) => {
-    setBusinesses([...businesses, { ...data, id: uid(), inventory: [], sales: [] }]);
+    storeAddBusiness(data);
     showToast("Business added!");
   };
 
   const deleteBusiness = (id) => {
-    setBusinesses(businesses.filter((b) => b.id !== id));
+    storeDeleteBusiness(id);
     setModal(null);
     setActiveBizId(null);
     setScreen("home");
     showToast("Business deleted.");
   };
 
+  // Quantity and cost are recorded as an opening ledger entry rather than as
+  // fields on the item, so later restocks at different prices can't rewrite them.
   const addInventoryItem = (bizId, item) => {
-    setBusinesses(businesses.map((b) =>
-      b.id === bizId ? { ...b, inventory: [...b.inventory, { ...item, id: uid(), sold: 0 }] } : b
-    ));
+    storeAddItem(bizId, item);
     showToast("Item added to inventory!");
   };
 
-  const restockInventoryItem = (bizId, itemId, addQty, newCost) => {
-    setBusinesses(businesses.map((b) =>
-      b.id === bizId ? {
-        ...b,
-        inventory: b.inventory.map((i) =>
-          i.id === itemId ? {
-            ...i,
-            qty: i.qty + addQty,
-            cost: newCost !== null ? newCost : i.cost, // update cost if supplier price changed
-          } : i
-        )
-      } : b
-    ));
+  const restockInventoryItem = (bizId, itemId, addQty, newUnitCost) => {
+    const item = activeBiz ? selectInventory({ businesses }, bizId).find((i) => i.id === itemId) : null;
+    storeRestockItem(bizId, itemId, {
+      qty: addQty,
+      // Blank means "same price as before", which for a weighted average is the
+      // current average -- it leaves the average untouched.
+      unitCost: newUnitCost === null || newUnitCost === undefined ? (item?.avgCost ?? 0) : newUnitCost,
+    });
     showToast("Stock topped up!");
   };
 
   const deleteInventoryItem = (bizId, itemId) => {
-    setBusinesses(businesses.map((b) =>
-      b.id === bizId ? { ...b, inventory: b.inventory.filter((i) => i.id !== itemId) } : b
-    ));
+    storeDeleteItem(bizId, itemId);
     showToast("Item removed.");
   };
 
   const addSale = (bizId, sale) => {
-    const biz = businesses.find(b => b.id === bizId);
-    if (!biz) return;
-
-    let newSale;
-    let newInventory = biz.inventory;
-
-    if (sale.isCustom) {
-      newSale = {
-        id: uid(),
-        itemName: sale.manualName,
-        qty: Number(sale.qty) || 1,
-        askingPrice: Number(sale.actualPrice),
-        actualPrice: Number(sale.actualPrice),
-        revenue: Number(sale.actualPrice) * (Number(sale.qty) || 1),
-        cost: Number(sale.manualCost) * (Number(sale.qty) || 1),
-        discount: 0,
-        date: new Date().toISOString().slice(0, 10),
-        note: sale.note,
-        isCustom: true
-      };
-    } else {
-      const item = biz.inventory.find(i => String(i.id) === String(sale.itemId));
-      if (!(num(sale.qty) > 0)) {
-        showToast("Quantity must be greater than 0");
-        return;
-      }
-      if (!item || item.qty < sale.qty) {
-        showToast(`Not enough stock for ${item?.name || "item"}`);
-        return;
-      }
-      newSale = {
-        id: uid(),
-        itemName: item.name,
-        qty: sale.qty,
-        askingPrice: item.price,
-        actualPrice: sale.actualPrice,
-        revenue: sale.actualPrice * sale.qty,
-        cost: item.cost * sale.qty,
-        discount: item.price !== sale.actualPrice ? (item.price - sale.actualPrice) * sale.qty : 0,
-        date: new Date().toISOString().slice(0, 10),
-        note: sale.note,
-      };
-      newInventory = biz.inventory.map((i) =>
-        i.id === sale.itemId || String(i.id) === String(sale.itemId) ? { ...i, qty: i.qty - sale.qty, sold: i.sold + sale.qty } : i
-      );
-    }
-
-    setBusinesses(businesses.map((b) => {
-      if (b.id !== bizId) return b;
-      return { ...b, sales: [newSale, ...b.sales], inventory: newInventory };
-    }));
+    const { item } = storeRecordSale(bizId, sale);
     showToast("Sale recorded!");
 
-    // Low-stock notification
-    if (!sale.isCustom) {
-      const item = newInventory.find(i => String(i.id) === String(sale.itemId));
-      if (item && item.qty > 0 && item.qty <= lowStockThreshold) {
-        sendLowStockNotification(item.name, item.qty, biz.name);
-      }
+    if (!item) return;
+    if (hasStockDiscrepancy(item)) {
+      // The sale is kept -- it happened. Surface the mismatch to reconcile.
+      showToast(`${item.name} is oversold by ${Math.abs(item.qty)}. Check your stock.`);
+      return;
+    }
+    if (item.qty > 0 && item.qty <= lowStockThreshold) {
+      const biz = businesses.find((b) => b.id === bizId);
+      sendLowStockNotification(item.name, item.qty, biz?.name || "your business");
     }
   };
 
@@ -619,7 +541,7 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const ctx = { businesses, replaceBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -724,10 +646,11 @@ export default function BizTrack() {
 /* ─── HOME SCREEN ───────────────────────────────────────────────────────────── */
 function HomeScreen({ ctx }) {
   const { businesses, openBiz, setModal, lowStockThreshold, userName, setScreen, userAvatar } = ctx;
-  const totalRevenue = businesses.reduce((s, b) => s + calcBizStats(b).revenue, 0);
-  const totalProfit = businesses.reduce((s, b) => s + calcBizStats(b).profit, 0);
+  const totals = calcPortfolioStats(businesses);
   const allLowStock = businesses.flatMap((b) =>
-    b.inventory.filter((i) => i.qty <= lowStockThreshold).map((i) => ({ ...i, bizName: b.name, bizColor: b.color }))
+    deriveInventory(b)
+      .filter((i) => !i.deletedAt && i.qty <= lowStockThreshold)
+      .map((i) => ({ ...i, bizName: b.name, bizColor: b.color }))
   );
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -746,11 +669,11 @@ function HomeScreen({ ctx }) {
       <div id="home-summary" style={S.summaryCard}>
         <div style={S.summaryOrb} />
         <p style={S.summaryLabel}>Total Profit This Month</p>
-        <h2 style={S.summaryAmount}>{fmt(totalProfit)}</h2>
+        <h2 style={S.summaryAmount}>{fmt(totals.profit)}</h2>
         <div style={S.summaryRow}>
           <div>
             <p style={S.summarySubLabel}>Revenue</p>
-            <p style={S.summarySubVal}>{fmt(totalRevenue)}</p>
+            <p style={S.summarySubVal}>{fmt(totals.revenue)}</p>
           </div>
           <div style={S.summaryDivider} />
           <div>
@@ -760,7 +683,7 @@ function HomeScreen({ ctx }) {
           <div style={S.summaryDivider} />
           <div>
             <p style={S.summarySubLabel}>Margin</p>
-            <p style={S.summarySubVal}>{totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(0) : 0}%</p>
+            <p style={S.summarySubVal}>{totals.margin}%</p>
           </div>
         </div>
       </div>
@@ -792,19 +715,18 @@ function HomeScreen({ ctx }) {
         )}
         {businesses.map((biz) => {
           const stats = calcBizStats(biz);
-          const status = getStatus(Number(stats.margin));
-          const ss = STATUS_STYLE[status];
+          const ss = STATUS_STYLE[getStatus(stats.margin)];
           return (
             <div key={biz.id} style={{ ...S.bizCard, borderLeftColor: biz.color }} onClick={() => openBiz(biz.id)}>
               <div style={S.bizCardLeft}>
                 <div style={{ ...S.bizEmoji, background: biz.color + "22" }}>{biz.emoji}</div>
                 <div>
                   <p style={S.bizName}>{biz.name}</p>
-                  <p style={S.bizCat}>{biz.category} · {biz.inventory.length} items</p>
+                  <p style={S.bizCat}>{biz.category} · {biz.items.filter((i) => !i.deletedAt).length} items</p>
                 </div>
               </div>
               <div style={S.bizCardRight}>
-                <p style={S.bizProfit}>{fmt(stats.profit)}</p>
+                <p style={S.bizProfit}>{fmt(stats.profit, biz.currency)}</p>
                 <span style={{ ...S.badge, background: ss.bg, color: ss.text }}>{ss.label}</span>
               </div>
             </div>
@@ -821,6 +743,8 @@ function HomeScreen({ ctx }) {
 function BusinessScreen({ ctx }) {
   const { activeBiz, bizTab, setBizTab, setScreen, setModal, deleteInventoryItem, lowStockThreshold, setRestockItemId } = ctx;
   const stats = calcBizStats(activeBiz);
+  // Quantity and average cost are folded from the stock ledger on read.
+  const inventory = deriveInventory(activeBiz).filter((i) => !i.deletedAt);
 
   return (
     <div style={S.screen}>
@@ -839,11 +763,11 @@ function BusinessScreen({ ctx }) {
         <div style={S.heroRow}>
           <div>
             <p style={S.heroLabel}>Revenue</p>
-            <p style={S.heroVal}>{fmt(stats.revenue)}</p>
+            <p style={S.heroVal}>{fmt(stats.revenue, activeBiz.currency)}</p>
           </div>
           <div>
             <p style={S.heroLabel}>Profit</p>
-            <p style={S.heroVal}>{fmt(stats.profit)}</p>
+            <p style={S.heroVal}>{fmt(stats.profit, activeBiz.currency)}</p>
           </div>
           <div>
             <p style={S.heroLabel}>Margin</p>
@@ -866,25 +790,35 @@ function BusinessScreen({ ctx }) {
       </div>
 
       <div style={S.tabContent}>
-        {bizTab === "overview" && <OverviewTab biz={activeBiz} stats={stats} lowStockThreshold={lowStockThreshold} />}
-        {bizTab === "inventory" && <InventoryTab biz={activeBiz} setModal={setModal} deleteInventoryItem={deleteInventoryItem} setRestockItemId={setRestockItemId} lowStockThreshold={lowStockThreshold} />}
+        {bizTab === "overview" && <OverviewTab biz={activeBiz} stats={stats} lowStockThreshold={lowStockThreshold} inventory={inventory} />}
+        {bizTab === "inventory" && <InventoryTab biz={activeBiz} setModal={setModal} deleteInventoryItem={deleteInventoryItem} setRestockItemId={setRestockItemId} lowStockThreshold={lowStockThreshold} inventory={inventory} />}
         {bizTab === "sales" && <SalesTab biz={activeBiz} setModal={setModal} />}
       </div>
     </div>
   );
 }
 
-function OverviewTab({ biz, stats, lowStockThreshold }) {
-  const best = [...biz.inventory].sort((a, b) => b.sold - a.sold)[0];
-  const lowStock = biz.inventory.filter((i) => i.qty <= lowStockThreshold);
+function OverviewTab({ biz, stats, lowStockThreshold, inventory }) {
+  const cur = biz.currency;
+  const best = [...inventory].sort((a, b) => b.sold - a.sold)[0];
+  const lowStock = inventory.filter((i) => i.qty > 0 && i.qty <= lowStockThreshold);
+  const oversold = inventory.filter(hasStockDiscrepancy);
   const recentSales = biz.sales.slice(0, 3);
   return (
     <div style={S.tabInner}>
-      {best && (
+      {oversold.length > 0 && (
+        <div style={{ ...S.infoCard, borderLeftColor: "#C0392B" }}>
+          <p style={{...S.infoLabel, display:"flex", alignItems:"center", gap:6, color:"#C0392B"}}><AlertTriangle size={14} color="#C0392B"/> Stock Discrepancy</p>
+          {oversold.map((i) => (
+            <p key={i.id} style={S.infoSub}>{i.name} — {Math.abs(i.qty)} more sold than recorded as bought. Restock to correct.</p>
+          ))}
+        </div>
+      )}
+      {best && best.sold > 0 && (
         <div style={S.infoCard}>
           <p style={{...S.infoLabel, display:"flex", alignItems:"center", gap:6}}><Award size={14} color="#8B6914"/> Best Seller</p>
           <p style={S.infoVal}>{best.name}</p>
-          <p style={S.infoSub}>{best.sold} units sold · {fmt(best.price)} each · {(((best.price - best.cost) / best.price) * 100).toFixed(0)}% margin</p>
+          <p style={S.infoSub}>{best.sold} units sold · {fmt(best.unitPrice, cur)} each · {itemEconomics(best).margin}% margin</p>
         </div>
       )}
       {lowStock.length > 0 && (
@@ -898,36 +832,37 @@ function OverviewTab({ biz, stats, lowStockThreshold }) {
       <div style={S.statsGrid}>
         <div style={S.statCard}>
           <p style={S.statLbl}>Total Sales</p>
-          <p style={S.statVal}>{biz.sales.length}</p>
+          <p style={S.statVal}>{stats.salesCount}</p>
         </div>
         <div style={S.statCard}>
           <p style={S.statLbl}>Units Sold</p>
-          <p style={S.statVal}>{biz.inventory.reduce((s, i) => s + i.sold, 0)}</p>
+          {/* From the sales list, so one-off custom sales are counted too. */}
+          <p style={S.statVal}>{stats.unitsSold}</p>
         </div>
         <div style={S.statCard}>
           <p style={S.statLbl}>Revenue</p>
-          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.revenue)}</p>
+          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.revenue, cur)}</p>
         </div>
         <div style={S.statCard}>
           <p style={S.statLbl}>COGS</p>
-          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.cogs)}</p>
+          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.cogs, cur)}</p>
         </div>
       </div>
       {recentSales.length > 0 && (
         <>
           <p style={S.sectionLabel}>Recent Sales</p>
-          {recentSales.map((s) => (
-            <div key={s.id} style={S.saleRow}>
+          {recentSales.map((sale) => (
+            <div key={sale.id} style={S.saleRow}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <p style={S.saleName}>{s.itemName}</p>
-                  {s.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
+                  <p style={S.saleName}>{sale.itemName}</p>
+                  {sale.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
                 </div>
-                <p style={S.saleSub}>{s.qty} {s.qty > 1 ? "units" : "unit"} · {dateLabel(s.date)}</p>
+                <p style={S.saleSub}>{sale.qty} {sale.qty > 1 ? "units" : "unit"} · {dateLabel(sale.occurredAt)}</p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <p style={S.saleRev}>{fmt(s.revenue)}</p>
-                <p style={S.salePft}>+{fmt(s.revenue - s.cost)}</p>
+                <p style={S.saleRev}>{fmt(saleRevenue(sale), cur)}</p>
+                <p style={S.salePft}>+{fmt(saleProfit(sale), cur)}</p>
               </div>
             </div>
           ))}
@@ -938,42 +873,44 @@ function OverviewTab({ biz, stats, lowStockThreshold }) {
   );
 }
 
-function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId, lowStockThreshold }) {
+function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId, lowStockThreshold, inventory }) {
+  const cur = biz.currency;
   return (
     <div style={S.tabInner}>
       <button style={S.dashedBtn} onClick={() => setModal("addItem")}>+ Add New Item</button>
-      {biz.inventory.length === 0 && (
+      {inventory.length === 0 && (
         <div style={S.emptyState}>
           <div style={S.emptyIcon}><Package size={40} color="#2C1810" strokeWidth={1.5} /></div>
           <p style={S.emptyTitle}>No items yet</p>
           <p style={S.emptySub}>Add your first product above</p>
         </div>
       )}
-      {biz.inventory.map((item) => {
-        const margin = (((item.price - item.cost) / item.price) * 100).toFixed(0);
-        const profit = item.price - item.cost;
+      {inventory.map((item) => {
+        const { profit, margin } = itemEconomics(item);
         return (
           <div key={item.id} style={S.invRow}>
             <div style={{ flex: 1 }}>
               <div style={S.invNameRow}>
                 <p style={S.invName}>{item.name}</p>
-                {item.qty <= lowStockThreshold && <span style={S.lowBadge}>Low</span>}
+                {hasStockDiscrepancy(item)
+                  ? <span style={{ ...S.lowBadge, background: "#C0392B", color: "#FFF" }}>Oversold</span>
+                  : item.qty <= lowStockThreshold && <span style={S.lowBadge}>Low</span>}
               </div>
-              <p style={S.invSub}>Cost: {fmt(item.cost)} · Asking: {fmt(item.price)}</p>
+              {/* Average cost across every batch bought, not just the latest price. */}
+              <p style={S.invSub}>Avg cost: {fmt(item.avgCost, cur)} · Asking: {fmt(item.unitPrice, cur)}</p>
               <p style={S.invSub}>{item.qty} in stock · {item.sold} sold</p>
-              {/* RESTOCK BUTTON */}
               <button
                 style={S.restockBtn}
                 onClick={() => { setRestockItemId(item.id); setModal("restock"); }}
               >+ Restock</button>
             </div>
             <div style={{ alignItems: "flex-end", display: "flex", flexDirection: "column", gap: 6 }}>
-              <p style={S.invProfit}>+{fmt(profit)}/unit</p>
+              <p style={S.invProfit}>+{fmt(profit, cur)}/unit</p>
               <span style={S.marginBadge}>{margin}%</span>
               <button
                 style={S.deleteBtn}
                 onClick={() => {
-                  if (confirm(`Remove "${item.name}" from inventory? This cannot be undone.`)) {
+                  if (confirm(`Remove "${item.name}" from inventory? Its sales history is kept.`)) {
                     deleteInventoryItem(biz.id, item.id);
                   }
                 }}
@@ -988,15 +925,15 @@ function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId, lo
 }
 
 function SalesTab({ biz, setModal }) {
-  const totalRev = biz.sales.reduce((s, x) => s + x.revenue, 0);
-  const totalPft = biz.sales.reduce((s, x) => s + (x.revenue - x.cost), 0);
+  const cur = biz.currency;
+  const stats = calcBizStats(biz);
   return (
     <div style={S.tabInner}>
       <button style={S.dashedBtn} onClick={() => setModal("addSale")}>+ Record New Sale</button>
       {biz.sales.length > 0 && (
         <div style={{ ...S.infoCard, background: "#F0FAF0" }}>
           <p style={S.infoLabel}>All Time</p>
-          <p style={S.infoSub}>Revenue: {fmt(totalRev)} · Profit: {fmt(totalPft)}</p>
+          <p style={S.infoSub}>Revenue: {fmt(stats.revenue, cur)} · Profit: {fmt(stats.profit, cur)}</p>
         </div>
       )}
       {biz.sales.length === 0 && (
@@ -1013,11 +950,11 @@ function SalesTab({ biz, setModal }) {
               <p style={S.saleName}>{sale.itemName}</p>
               {sale.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
             </div>
-            <p style={S.saleSub}>{sale.qty} {sale.qty > 1 ? "units" : "unit"} · {dateLabel(sale.date)}{sale.note ? ` · ${sale.note}` : ""}</p>
+            <p style={S.saleSub}>{sale.qty} {sale.qty > 1 ? "units" : "unit"} · {dateLabel(sale.occurredAt)}{sale.note ? ` · ${sale.note}` : ""}</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={S.saleRev}>{fmt(sale.revenue)}</p>
-            <p style={S.salePft}>+{fmt(sale.revenue - sale.cost)}</p>
+            <p style={S.saleRev}>{fmt(saleRevenue(sale), cur)}</p>
+            <p style={S.salePft}>+{fmt(saleProfit(sale), cur)}</p>
           </div>
         </div>
       ))}
@@ -1030,8 +967,7 @@ function SalesTab({ biz, setModal }) {
 function AnalyticsScreen({ ctx }) {
   const { businesses, setScreen } = ctx;
   const sorted = [...businesses].map((b) => ({ ...b, stats: calcBizStats(b) })).sort((a, b) => b.stats.profit - a.stats.profit);
-  const totalRev = sorted.reduce((s, b) => s + b.stats.revenue, 0);
-  const totalPft = sorted.reduce((s, b) => s + b.stats.profit, 0);
+  const totals = calcPortfolioStats(businesses);
   const maxProfit = Math.max(...sorted.map((b) => b.stats.profit), 1);
 
   const chartData = sorted.map((b) => ({
@@ -1053,16 +989,16 @@ function AnalyticsScreen({ ctx }) {
         <div style={S.summaryCard}>
           <div style={S.summaryOrb} />
           <p style={S.summaryLabel}>Total Revenue</p>
-          <h2 style={S.summaryAmount}>{fmt(totalRev)}</h2>
+          <h2 style={S.summaryAmount}>{fmt(totals.revenue)}</h2>
           <div style={S.summaryRow}>
             <div>
               <p style={S.summarySubLabel}>Profit</p>
-              <p style={S.summarySubVal}>{fmt(totalPft)}</p>
+              <p style={S.summarySubVal}>{fmt(totals.profit)}</p>
             </div>
             <div style={S.summaryDivider} />
             <div>
               <p style={S.summarySubLabel}>Avg Margin</p>
-              <p style={S.summarySubVal}>{totalRev > 0 ? ((totalPft / totalRev) * 100).toFixed(0) : 0}%</p>
+              <p style={S.summarySubVal}>{totals.margin}%</p>
             </div>
           </div>
         </div>
@@ -1112,15 +1048,21 @@ function AnalyticsScreen({ ctx }) {
 
         {/* BEST ITEMS ACROSS ALL */}
         <p style={S.sectionLabel}>Top Items (All Businesses)</p>
-        {businesses.flatMap((b) => b.inventory.map((i) => ({ ...i, bizName: b.name, bizColor: b.color, margin: (((i.price - i.cost) / i.price) * 100).toFixed(0) }))).sort((a, b) => b.sold - a.sold).slice(0, 5).map((item, i) => (
-          <div key={i} style={S.invRow}>
-            <div style={{ flex: 1 }}>
-              <p style={S.invName}>{item.name}</p>
-              <p style={S.invSub}>{item.bizName} · {item.sold} sold · {item.margin}% margin</p>
+        {businesses
+          .flatMap((b) => deriveInventory(b)
+            .filter((i) => !i.deletedAt)
+            .map((i) => ({ ...i, bizName: b.name, bizCurrency: b.currency, margin: itemEconomics(i).margin })))
+          .sort((a, b) => b.sold - a.sold)
+          .slice(0, 5)
+          .map((item) => (
+            <div key={item.id} style={S.invRow}>
+              <div style={{ flex: 1 }}>
+                <p style={S.invName}>{item.name}</p>
+                <p style={S.invSub}>{item.bizName} · {item.sold} sold · {item.margin}% margin</p>
+              </div>
+              <p style={S.invProfit}>{fmt(item.unitPrice * item.sold, item.bizCurrency)}</p>
             </div>
-            <p style={S.invProfit}>{fmt(item.price * item.sold)}</p>
-          </div>
-        ))}
+          ))}
         <div style={{ height: 16 }} />
       </div>
     </div>
@@ -1130,7 +1072,7 @@ function AnalyticsScreen({ ctx }) {
 /* ─── SETTINGS SCREEN ───────────────────────────────────────────────────────── */
 function SettingsScreen({ ctx }) {
   const { setScreen, businesses, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
-  const currencies = ["XAF","NGN","GHS","KES","USD","EUR"];
+  const currencies = CURRENCIES;
 
   return (
     <div style={S.screen}>
@@ -1198,6 +1140,7 @@ function SettingsScreen({ ctx }) {
               <DollarSign size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Currency</p>
+                <p style={S.settingsRowSub}>Applies to new businesses</p>
               </div>
               <select
                 value={currency}
@@ -1236,11 +1179,9 @@ function SettingsScreen({ ctx }) {
                 return;
               }
 
-              const cur = currency || "XAF";
-              const fmtNum = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(n));
               const esc = (v) => {
-                const s = String(v ?? "");
-                return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+                const str = String(v ?? "");
+                return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str.replace(/"/g, '""')}"` : str;
               };
 
               const rows = [];
@@ -1251,89 +1192,82 @@ function SettingsScreen({ ctx }) {
               rows.push(["BizTrack Business Report"]);
               rows.push([`Generated: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`]);
               rows.push([`Owner: ${userName || "N/A"}`]);
-              rows.push([`Currency: ${cur}`]);
               rows.push([`Version: ${VERSION}`]);
 
               // ── PORTFOLIO SUMMARY ──
               header("Portfolio Summary");
-              const totalRev = businesses.reduce((a, b) => a + b.sales.reduce((s, sl) => s + sl.revenue, 0), 0);
-              const totalCost = businesses.reduce((a, b) => a + b.sales.reduce((s, sl) => s + sl.cost, 0), 0);
-              const totalProfit = totalRev - totalCost;
-              const totalItems = businesses.reduce((a, b) => a + b.inventory.length, 0);
-              const totalSales = businesses.reduce((a, b) => a + b.sales.length, 0);
+              const totals = calcPortfolioStats(businesses);
               rows.push(["Total Businesses", businesses.length]);
-              rows.push(["Total Inventory Items", totalItems]);
-              rows.push(["Total Sales Recorded", totalSales]);
-              rows.push(["Total Revenue", fmtNum(totalRev)]);
-              rows.push(["Total Cost of Goods", fmtNum(totalCost)]);
-              rows.push(["Total Profit", fmtNum(totalProfit)]);
-              rows.push(["Overall Margin", totalRev > 0 ? ((totalProfit / totalRev) * 100).toFixed(1) + "%" : "N/A"]);
+              rows.push(["Total Inventory Items", businesses.reduce((a, b) => a + b.items.filter((i) => !i.deletedAt).length, 0)]);
+              rows.push(["Total Sales Recorded", businesses.reduce((a, b) => a + b.sales.length, 0)]);
+              rows.push(["Total Revenue", fmt(totals.revenue)]);
+              rows.push(["Total Cost of Goods", fmt(totals.cogs)]);
+              rows.push(["Total Profit", fmt(totals.profit)]);
+              rows.push(["Overall Margin", totals.margin + "%"]);
 
               // ── PER BUSINESS BREAKDOWN ──
               businesses.forEach((biz, idx) => {
+                const cur = biz.currency;
                 const stats = calcBizStats(biz);
-                const status = getStatus(stats.margin);
+                const inventory = deriveInventory(biz).filter((i) => !i.deletedAt);
 
                 header(`Business ${idx + 1}: ${biz.name}`);
                 rows.push(["Category", biz.category || "N/A"]);
-                rows.push(["Status", STATUS_STYLE[status]?.label || status]);
-                rows.push(["Revenue", fmtNum(stats.revenue)]);
-                rows.push(["Cost of Goods", fmtNum(stats.cogs)]);
-                rows.push(["Profit", fmtNum(stats.profit)]);
+                rows.push(["Currency", cur]);
+                rows.push(["Status", STATUS_STYLE[getStatus(stats.margin)]?.label || ""]);
+                rows.push(["Revenue", fmt(stats.revenue, cur)]);
+                rows.push(["Cost of Goods", fmt(stats.cogs, cur)]);
+                rows.push(["Profit", fmt(stats.profit, cur)]);
                 rows.push(["Margin", stats.margin + "%"]);
-                rows.push(["Inventory Items", biz.inventory.length]);
-                rows.push(["Sales Count", biz.sales.length]);
+                rows.push(["Inventory Items", inventory.length]);
+                rows.push(["Sales Count", stats.salesCount]);
 
-                // Inventory table
-                if (biz.inventory.length > 0) {
+                if (inventory.length > 0) {
                   sep();
                   rows.push(["── Inventory ──"]);
-                  rows.push(["Item Name", "In Stock", "Sold", "Unit Cost", "Selling Price", "Stock Value", "Potential Revenue"]);
-                  biz.inventory.forEach(item => {
+                  rows.push(["Item Name", "In Stock", "Sold", "Avg Unit Cost", "Selling Price", "Stock Value", "Potential Revenue"]);
+                  inventory.forEach((item) => {
                     rows.push([
                       esc(item.name),
                       item.qty,
-                      item.sold || 0,
-                      fmtNum(item.cost),
-                      fmtNum(item.price),
-                      fmtNum(item.cost * item.qty),
-                      fmtNum(item.price * item.qty)
+                      item.sold,
+                      fmt(item.avgCost, cur),
+                      fmt(item.unitPrice, cur),
+                      fmt(item.avgCost * Math.max(item.qty, 0), cur),
+                      fmt(item.unitPrice * Math.max(item.qty, 0), cur),
                     ]);
                   });
                 }
 
-                // Sales table
                 if (biz.sales.length > 0) {
                   sep();
                   rows.push(["── Sales History ──"]);
-                  rows.push(["Date", "Item", "Qty", "Selling Price", "Revenue", "Cost", "Profit", "Discount", "Note"]);
-                  biz.sales.forEach(s => {
-                    const profit = s.revenue - s.cost;
+                  rows.push(["Date", "Item", "Qty", "Unit Price", "Revenue", "Cost", "Profit", "Discount", "Note"]);
+                  biz.sales.forEach((sale) => {
                     rows.push([
-                      s.date,
-                      esc(s.itemName),
-                      s.qty,
-                      fmtNum(s.actualPrice || s.revenue / (s.qty || 1)),
-                      fmtNum(s.revenue),
-                      fmtNum(s.cost),
-                      fmtNum(profit),
-                      s.discount ? fmtNum(s.discount) : "-",
-                      esc(s.note || "")
+                      String(sale.occurredAt).slice(0, 10),
+                      esc(sale.itemName),
+                      sale.qty,
+                      fmt(sale.unitPrice, cur),
+                      fmt(saleRevenue(sale), cur),
+                      fmt(saleCost(sale), cur),
+                      fmt(saleProfit(sale), cur),
+                      saleDiscount(sale) ? fmt(saleDiscount(sale), cur) : "-",
+                      esc(sale.note || ""),
                     ]);
                   });
                 }
               });
 
-              // ── FOOTER ──
               sep();
               rows.push(["End of Report — BizTrack " + VERSION]);
 
-              const csvString = rows.map(r => r.join(",")).join("\n");
+              const csvString = rows.map((r) => r.join(",")).join("\n");
               const blob = new Blob(["\uFEFF" + csvString], { type: "text/csv;charset=utf-8;" });
               const url = URL.createObjectURL(blob);
               const link = document.createElement("a");
               link.href = url;
-              link.setAttribute("download", `BizTrack_Report_${new Date().toISOString().slice(0,10)}.csv`);
+              link.setAttribute("download", `BizTrack_Report_${new Date().toISOString().slice(0, 10)}.csv`);
               document.body.appendChild(link);
               link.click();
               document.body.removeChild(link);
@@ -1460,22 +1394,33 @@ function AddBizModal({ ctx }) {
 }
 
 function AddItemModal({ ctx }) {
-  const { setModal, activeBizId, addInventoryItem } = ctx;
+  const { setModal, activeBizId, activeBiz, addInventoryItem } = ctx;
+  const cur = activeBiz?.currency;
   const [name, setName] = useState("");
   const [qty, setQty] = useState("");
   const [cost, setCost] = useState("");
   const [price, setPrice] = useState("");
 
-  const margin = cost && price ? (((Number(price) - Number(cost)) / Number(price)) * 100).toFixed(0) : null;
-  const profit = cost && price ? Number(price) - Number(cost) : null;
+  // Typed values are in major units (what the user says out loud); everything
+  // past this boundary is integer minor units.
+  const costMinor = toMinor(cost, cur);
+  const priceMinor = toMinor(price, cur);
+  const preview = cost !== "" && price !== ""
+    ? { profit: priceMinor - costMinor, margin: marginPercent(priceMinor, costMinor) }
+    : null;
 
   const submit = () => {
     if (!name.trim()) return alert("Please enter an item name.");
-    const q = num(qty, NaN), c = num(cost, NaN), p = num(price, NaN);
+    const q = num(qty, NaN);
     if (!(q > 0)) return alert("Quantity must be greater than 0.");
-    if (!(c >= 0)) return alert("Cost cannot be negative.");
-    if (!(p > 0)) return alert("Selling price must be greater than 0.");
-    addInventoryItem(activeBizId, { name: name.trim(), qty: q, cost: c, price: p });
+    if (!(num(cost, NaN) >= 0)) return alert("Cost cannot be negative.");
+    if (!(num(price, NaN) > 0)) return alert("Selling price must be greater than 0.");
+    addInventoryItem(activeBizId, {
+      name: name.trim(),
+      qty: Math.round(q),
+      unitCost: costMinor,
+      unitPrice: priceMinor,
+    });
     setModal(null);
   };
 
@@ -1486,23 +1431,23 @@ function AddItemModal({ ctx }) {
         <input style={S.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bucket Hat" />
 
         <p style={S.fieldLabel}>Quantity Purchased</p>
-        <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 20" />
+        <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 20" />
 
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <p style={S.fieldLabel}>Cost per Unit (XAF)</p>
-            <input style={S.input} type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="e.g. 1500" />
+            <p style={S.fieldLabel}>Cost per Unit ({cur})</p>
+            <input style={S.input} type="number" min="0" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="e.g. 1500" />
           </div>
           <div style={{ flex: 1 }}>
-            <p style={S.fieldLabel}>Selling Price (XAF)</p>
-            <input style={S.input} type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 4500" />
+            <p style={S.fieldLabel}>Selling Price ({cur})</p>
+            <input style={S.input} type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 4500" />
           </div>
         </div>
 
-        {margin !== null && (
+        {preview && (
           <div style={S.calcPreview}>
-            <p style={S.calcLabel}>Profit per unit: <strong>{fmt(profit)}</strong></p>
-            <p style={S.calcLabel}>Margin: <strong style={{ color: Number(margin) >= 30 ? "#3A7D2C" : "#C0392B" }}>{margin}%</strong></p>
+            <p style={S.calcLabel}>Profit per unit: <strong>{fmt(preview.profit, cur)}</strong></p>
+            <p style={S.calcLabel}>Margin: <strong style={{ color: preview.margin >= 30 ? "#3A7D2C" : "#C0392B" }}>{preview.margin}%</strong></p>
           </div>
         )}
 
@@ -1514,19 +1459,27 @@ function AddItemModal({ ctx }) {
 
 function RestockModal({ ctx }) {
   const { setModal, activeBiz, restockItemId, restockInventoryItem, setRestockItemId } = ctx;
-  const item = activeBiz?.inventory.find((i) => i.id === restockItemId);
+  const cur = activeBiz?.currency;
+  const item = activeBiz
+    ? deriveInventory(activeBiz).find((i) => i.id === restockItemId && !i.deletedAt)
+    : null;
   const [qty, setQty] = useState("");
-  const [cost, setCost] = useState(item ? item.cost : "");
+  const [cost, setCost] = useState("");
+
+  const close = () => { setRestockItemId(null); setModal(null); };
 
   const submit = () => {
-    if (!item || !qty) return;
-    restockInventoryItem(activeBiz.id, item.id, Number(qty), cost ? Number(cost) : null);
-    setRestockItemId(null);
-    setModal(null);
+    if (!item) return;
+    const q = num(qty, NaN);
+    if (!(q > 0)) return alert("Quantity must be greater than 0.");
+    if (cost !== "" && !(num(cost, NaN) >= 0)) return alert("Cost cannot be negative.");
+    // Blank keeps the running average unchanged.
+    restockInventoryItem(activeBiz.id, item.id, Math.round(q), cost === "" ? null : toMinor(cost, cur));
+    close();
   };
 
   return (
-    <ModalShell onClose={() => { setRestockItemId(null); setModal(null); }} title="Restock Item">
+    <ModalShell onClose={close} title="Restock Item">
       <div style={S.modalBody}>
         {!item ? (
           <div style={S.emptyState}>
@@ -1540,10 +1493,20 @@ function RestockModal({ ctx }) {
             <input style={S.input} value={item.name} disabled />
 
             <p style={S.fieldLabel}>Additional Quantity</p>
-            <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 10" />
+            <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 10" />
 
-            <p style={S.fieldLabel}>Updated Cost per Unit (optional)</p>
-            <input style={S.input} type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Leave blank to keep current cost" />
+            <p style={S.fieldLabel}>Cost per Unit for this batch (optional)</p>
+            <input
+              style={S.input}
+              type="number"
+              min="0"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder={`Leave blank to keep ${fmt(item.avgCost, cur)}`}
+            />
+            <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "-4px 0 0" }}>
+              A different price here is averaged in. It won't reprice the {Math.max(item.qty, 0)} you already have.
+            </p>
 
             <button style={S.primaryBtn} onClick={submit}>Restock Item</button>
           </>
@@ -1555,86 +1518,95 @@ function RestockModal({ ctx }) {
 
 function AddSaleModal({ ctx }) {
   const { setModal, activeBiz, addSale } = ctx;
-  const [tab, setTab] = useState("inventory"); // "inventory" | "custom"
-  const [itemId, setItemId] = useState(activeBiz?.inventory[0]?.id || "");
+  const cur = activeBiz?.currency;
+  const inventory = activeBiz ? deriveInventory(activeBiz).filter((i) => !i.deletedAt) : [];
+
+  const [tab, setTab] = useState("inventory");
+  const [itemId, setItemId] = useState(inventory[0]?.id || "");
   const [qty, setQty] = useState("1");
-  const [actualPrice, setActualPrice] = useState("");
+  const [actualPrice, setActualPrice] = useState(
+    inventory[0] ? String(toMajor(inventory[0].unitPrice, cur)) : ""
+  );
   const [note, setNote] = useState("");
-  
-  // Custom sale fields
+
   const [manualName, setManualName] = useState("");
   const [materialCost, setMaterialCost] = useState("");
   const [laborCost, setLaborCost] = useState("");
 
-  const selectedItem = activeBiz?.inventory.find((i) => String(i.id) === String(itemId));
+  const selectedItem = inventory.find((i) => i.id === itemId) || null;
 
   const handleItemChange = (e) => {
     setItemId(e.target.value);
-    const item = activeBiz?.inventory.find((i) => String(i.id) === e.target.value);
-    if (item) setActualPrice(String(item.price));
+    const next = inventory.find((i) => i.id === e.target.value);
+    // Prefill from the newly chosen item, always. The old effect only filled a
+    // blank field, so switching items silently kept the previous item's price.
+    if (next) setActualPrice(String(toMajor(next.unitPrice, cur)));
   };
 
-  useEffect(() => {
-    if (tab === "inventory" && selectedItem && !actualPrice) {
-      setActualPrice(String(selectedItem.price));
-    }
-  }, [tab, selectedItem]);
+  const priceMinor = toMinor(actualPrice, cur);
+  const qtyNum = Math.max(0, Math.round(num(qty)));
+  const manualCostMinor = toMinor(materialCost, cur) + toMinor(laborCost, cur);
 
-  const soldBelow = tab === "inventory" && selectedItem && actualPrice && Number(actualPrice) < selectedItem.price;
-  const soldAbove = tab === "inventory" && selectedItem && actualPrice && Number(actualPrice) > selectedItem.price;
+  const soldBelow = tab === "inventory" && selectedItem && actualPrice !== "" && priceMinor < selectedItem.unitPrice;
+  const soldAbove = tab === "inventory" && selectedItem && actualPrice !== "" && priceMinor > selectedItem.unitPrice;
 
-  const totalManualCost = Number(materialCost || 0) + Number(laborCost || 0);
-
-  const preview = tab === "inventory" 
-    ? (selectedItem && qty && actualPrice ? {
-        revenue: Number(actualPrice) * Number(qty),
-        profit: (Number(actualPrice) - selectedItem.cost) * Number(qty),
-        discount: soldBelow ? (selectedItem.price - Number(actualPrice)) * Number(qty) : 0,
-      } : null)
-    : (manualName && actualPrice ? {
-        revenue: Number(actualPrice) * Number(qty || 1),
-        profit: (Number(actualPrice) - totalManualCost) * Number(qty || 1),
-        discount: 0
-      } : null);
+  const unitCostMinor = tab === "inventory" ? (selectedItem?.avgCost ?? 0) : manualCostMinor;
+  const preview = (tab === "inventory" ? selectedItem && actualPrice !== "" : manualName && actualPrice !== "")
+    ? { revenue: priceMinor * qtyNum, profit: (priceMinor - unitCostMinor) * qtyNum }
+    : null;
 
   const submit = () => {
-    if (!(num(qty, NaN) > 0)) return alert("Quantity must be greater than 0.");
+    if (!(qtyNum > 0)) return alert("Quantity must be greater than 0.");
     if (!(num(actualPrice, NaN) >= 0)) return alert("Please enter a valid selling price.");
+
     if (tab === "inventory") {
-      if (!itemId || !qty || !actualPrice) return;
-      addSale(activeBiz.id, { itemId: String(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note, isCustom: false });
+      if (!selectedItem) return alert("Pick an item to sell.");
+      // Overselling is allowed on purpose: the sale happened. The resulting
+      // negative balance is flagged for reconciliation instead of blocked.
+      addSale(activeBiz.id, {
+        itemId: selectedItem.id,
+        itemName: selectedItem.name,
+        qty: qtyNum,
+        unitPrice: priceMinor,
+        unitCost: selectedItem.avgCost,
+        askingPrice: selectedItem.unitPrice,
+        note,
+        isCustom: false,
+      });
     } else {
-      if (!manualName || !actualPrice) return;
-      addSale(activeBiz.id, { 
-        isCustom: true, 
-        manualName, 
-        manualCost: totalManualCost, 
-        actualPrice: Number(actualPrice), 
-        qty: Number(qty) || 1, 
-        note 
+      if (!manualName.trim()) return alert("Give this custom sale a name.");
+      addSale(activeBiz.id, {
+        itemId: null,
+        itemName: manualName.trim(),
+        qty: qtyNum,
+        unitPrice: priceMinor,
+        unitCost: manualCostMinor,
+        askingPrice: priceMinor,
+        note,
+        isCustom: true,
       });
     }
     setModal(null);
   };
-  const isInventoryEmpty = tab === "inventory" && activeBiz?.inventory.length === 0;
+
+  const isInventoryEmpty = tab === "inventory" && inventory.length === 0;
 
   return (
     <ModalShell onClose={() => setModal(null)} title="Record Sale">
       <div style={S.modalBody}>
-        {/* TAB SWITCHER */}
         <div style={{ display: "flex", gap: 8, marginBottom: 20, background: "var(--border-color)", padding: 4, borderRadius: 12 }}>
-          <button 
+          <button
             style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", background: tab === "inventory" ? "var(--bg-primary)" : "transparent", color: tab === "inventory" ? "var(--text-primary)" : "var(--text-secondary)" }}
             onClick={() => setTab("inventory")}
           >From Inventory</button>
-          <button 
+          <button
             style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", background: tab === "custom" ? "var(--bg-primary)" : "transparent", color: tab === "custom" ? "var(--text-primary)" : "var(--text-secondary)" }}
             onClick={() => setTab("custom")}
           >Custom Entry</button>
         </div>
 
         {tab === "inventory" ? (
-          activeBiz?.inventory.length === 0 ? (
+          inventory.length === 0 ? (
             <div style={S.emptyState}>
               <div style={S.emptyIcon}><Package size={40} color="#2C1810" strokeWidth={1.5} /></div>
               <p style={S.emptyTitle}>No items in inventory</p>
@@ -1644,48 +1616,57 @@ function AddSaleModal({ ctx }) {
             <>
               <p style={S.fieldLabel}>Select Item</p>
               <select style={S.input} value={itemId} onChange={handleItemChange}>
-                {activeBiz.inventory.map((i) => (
+                {inventory.map((i) => (
                   <option key={i.id} value={i.id}>{i.name} ({i.qty} in stock)</option>
                 ))}
               </select>
-              
+
               <p style={S.fieldLabel}>Quantity Sold</p>
-              <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" />
-              
-              <p style={S.fieldLabel}>Actual Selling Price (XAF)</p>
+              <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" />
+
+              {selectedItem && qtyNum > selectedItem.qty && (
+                <p style={{ fontSize: 11, color: "#E67E22", margin: "-4px 0 0", fontWeight: 600 }}>
+                  Only {Math.max(selectedItem.qty, 0)} in stock. The sale will still be recorded and flagged.
+                </p>
+              )}
+
+              <p style={S.fieldLabel}>Actual Selling Price ({cur})</p>
               <input
-                style={{ ...S.input, borderColor: soldBelow ? "#E67E22" : soldAbove ? "#3A7D2C" : "#E0D6C8" }}
+                style={{ ...S.input, borderColor: soldBelow ? "#E67E22" : soldAbove ? "#3A7D2C" : "var(--border-color)" }}
                 type="number"
+                min="0"
                 value={actualPrice}
                 onChange={(e) => setActualPrice(e.target.value)}
                 placeholder="Price paid by customer"
               />
-              
             </>
           )
         ) : (
           <>
             <p style={S.fieldLabel}>Custom Item Name</p>
             <input style={S.input} value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="e.g. Custom Crochet Beanie" />
-            
-            <p style={S.fieldLabel}>Price Paid by Customer (XAF)</p>
-            <input style={S.input} type="number" value={actualPrice} onChange={(e) => setActualPrice(e.target.value)} placeholder="0" />
-            
+
+            <p style={S.fieldLabel}>Price Paid by Customer ({cur})</p>
+            <input style={S.input} type="number" min="0" value={actualPrice} onChange={(e) => setActualPrice(e.target.value)} placeholder="0" />
+
+            <p style={S.fieldLabel}>Quantity</p>
+            <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" />
+
             <div style={{ display: "flex", gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <p style={S.fieldLabel}>Material / Base Cost</p>
-                <input style={S.input} type="number" value={materialCost} onChange={(e) => setMaterialCost(e.target.value)} placeholder="0" />
+                <input style={S.input} type="number" min="0" value={materialCost} onChange={(e) => setMaterialCost(e.target.value)} placeholder="0" />
               </div>
               <div style={{ flex: 1 }}>
                 <p style={S.fieldLabel}>Labor Cost</p>
-                <input style={S.input} type="number" value={laborCost} onChange={(e) => setLaborCost(e.target.value)} placeholder="0" />
+                <input style={S.input} type="number" min="0" value={laborCost} onChange={(e) => setLaborCost(e.target.value)} placeholder="0" />
               </div>
             </div>
-            
-            {totalManualCost > 0 && (
-               <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: -8, textAlign: "right" }}>
-                 Total cost: {fmt(totalManualCost)}
-               </p>
+
+            {manualCostMinor > 0 && (
+              <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: -8, textAlign: "right" }}>
+                Total cost: {fmt(manualCostMinor, cur)}
+              </p>
             )}
           </>
         )}
@@ -1697,8 +1678,8 @@ function AddSaleModal({ ctx }) {
 
             {preview && (
               <div style={S.calcPreview}>
-                <p style={S.calcLabel}>Total Revenue: <strong>{fmt(preview.revenue)}</strong></p>
-                <p style={S.calcLabel}>Net Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
+                <p style={S.calcLabel}>Total Revenue: <strong>{fmt(preview.revenue, cur)}</strong></p>
+                <p style={S.calcLabel}>Net Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit, cur)}</strong></p>
               </div>
             )}
 
@@ -1965,7 +1946,7 @@ function AboutScreen({ ctx }) {
 
 /* ─── ONBOARDING ───────────────────────────────────────────────────────────── */
 function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
-  const { businesses, setBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold } = ctx;
+  const { businesses, replaceBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold } = ctx;
   const [step, setStep] = useState(0);
   const [showImport, setShowImport] = useState(false);
   const [importData, setImportData] = useState("");
@@ -1992,22 +1973,23 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
   };
 
   const handleImport = () => {
+    let parsed;
     try {
-      const data = JSON.parse(importData);
-      if (data.businesses !== undefined) {
-        const clean = sanitizeBusinesses(data.businesses);
-        if (!clean) return alert("That backup code is missing or has damaged business data.");
-        setBusinesses(clean);
-      }
-      if (data.userName) setUserName(data.userName);
-      if (data.userEmail) setUserEmail(data.userEmail);
-      if (data.currency) setCurrency(data.currency);
-      if (data.lowStockThreshold) setLowStockThreshold(data.lowStockThreshold);
-      alert("Data imported successfully!");
-      setShowImport(false);
+      // parseBackup accepts codes exported by older builds too, and migrates
+      // them on the way in.
+      parsed = parseBackup(JSON.parse(importData), currency);
     } catch {
-      alert("Invalid backup code.");
+      return alert("That doesn't look like a backup code.");
     }
+    if (!parsed) return alert("That backup code is missing or has damaged business data.");
+
+    replaceBusinesses(parsed.businesses);
+    if (parsed.userName) setUserName(parsed.userName);
+    if (parsed.userEmail) setUserEmail(parsed.userEmail);
+    if (parsed.currency) setCurrency(parsed.currency);
+    if (parsed.lowStockThreshold) setLowStockThreshold(parsed.lowStockThreshold);
+    alert(`Restored ${parsed.businesses.length} business${parsed.businesses.length === 1 ? "" : "es"}.`);
+    setShowImport(false);
   };
 
   return (
@@ -2401,8 +2383,7 @@ function AccountScreen({ ctx }) {
   const joinDate = useStore(s => s.joinDate);
   const formattedDate = new Date(joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
-  const totalRevenue = businesses.reduce((acc, b) => acc + b.sales.reduce((s, sale) => s + sale.revenue, 0), 0);
-  const totalProfit = businesses.reduce((acc, b) => acc + b.sales.reduce((s, sale) => s + (sale.revenue - sale.cost), 0), 0);
+  const lifetime = calcPortfolioStats(businesses);
   
   return (
     <div style={S.screen}>
@@ -2432,11 +2413,11 @@ function AccountScreen({ ctx }) {
         <div style={S.statsGrid}>
           <div style={S.statCard}>
             <p style={S.statLbl}>Lifetime Revenue</p>
-            <p style={S.statVal}>{fmt(totalRevenue)}</p>
+            <p style={S.statVal}>{fmt(lifetime.revenue)}</p>
           </div>
           <div style={S.statCard}>
             <p style={S.statLbl}>Lifetime Profit</p>
-            <p style={{ ...S.statVal, color: "#3A7D2C" }}>{fmt(totalProfit)}</p>
+            <p style={{ ...S.statVal, color: "#3A7D2C" }}>{fmt(lifetime.profit)}</p>
           </div>
         </div>
 
@@ -2537,19 +2518,18 @@ function AccountScreen({ ctx }) {
              <div style={S.settingsRow} onClick={() => {
                const code = prompt("Paste your backup code here:");
                if (!code) return;
+               let parsed;
                try {
-                 const data = JSON.parse(code);
-                 if (data.businesses !== undefined) {
-                   const clean = sanitizeBusinesses(data.businesses);
-                   if (!clean) return alert("That backup code is missing or has damaged business data.");
-                   ctx.setBusinesses(clean);
-                 }
-                 if (data.userName) ctx.setUserName(data.userName);
-                 if (data.userEmail) ctx.setUserEmail(data.userEmail);
-                 showToast("Data restored!");
+                 parsed = parseBackup(JSON.parse(code), ctx.currency);
                } catch {
-                 alert("Invalid backup code.");
+                 return alert("That doesn't look like a backup code.");
                }
+               if (!parsed) return alert("That backup code is missing or has damaged business data.");
+               ctx.replaceBusinesses(parsed.businesses);
+               if (parsed.userName) ctx.setUserName(parsed.userName);
+               if (parsed.userEmail) ctx.setUserEmail(parsed.userEmail);
+               if (parsed.currency) ctx.setCurrency(parsed.currency);
+               showToast(`Restored ${parsed.businesses.length} business${parsed.businesses.length === 1 ? "" : "es"}.`);
              }}>
                <Upload size={20} color="#8B6914" />
                <div style={{ flex: 1 }}>
