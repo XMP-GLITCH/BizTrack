@@ -82,3 +82,21 @@ Database and RLS tests need a local Postgres: `./supabase/tests/run.sh`.
 Supabase publish a VS Code extension for browsing your project's tables from the
 editor — search "Supabase" in the Extensions panel. It is convenience only;
 nothing here depends on it.
+
+## Continuing with Claude Code in VS Code
+
+1. Install the **Claude Code** extension from the VS Code marketplace (or run
+   `npm i -g @anthropic-ai/claude-code` and use `claude` in the integrated
+   terminal).
+2. Open this folder. Claude Code reads `CLAUDE.md` from the project root
+   automatically at the start of every session — that file carries the
+   architecture decisions, the reasoning behind them, the pricing model, what
+   has been verified and what has not, and the open questions.
+
+The chat transcript itself does not transfer between a web session and a local
+one. `CLAUDE.md` exists so it does not need to: a fresh session reads it and
+knows why the code is shaped the way it is, including the choices that look like
+bugs but are deliberate.
+
+Worth saying out loud in your first local session: *"read CLAUDE.md"* — then
+whatever you want to work on next.
