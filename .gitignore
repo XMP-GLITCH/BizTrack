@@ -25,3 +25,8 @@ dist-ssr
 
 # PWA dev build output
 dev-dist
+
+# Local env
+.env
+.env.local
+.env.*.local
