@@ -19,6 +19,8 @@ import { track, startAnalytics, setAppVersion, getConsent, setConsent, flush as 
 import { installErrorCapture } from "./analytics/errors.js";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
+import { buildBackup, saveBackupFile, pickBackupFile } from "./utils/transfer.js";
+import { summarizeLocal } from "./backend/claim.js";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
 const COLOR_NAMES = ["Terracotta","Gold","Sage","Rose","Slate","Plum","Mint","Sand"];
@@ -2230,7 +2232,6 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
   const { businesses, replaceBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold } = ctx;
   const [step, setStep] = useState(0);
   const [showImport, setShowImport] = useState(false);
-  const [importData, setImportData] = useState("");
   
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
@@ -2248,21 +2249,33 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
   };
 
   const handleExport = () => {
-    const data = { businesses, userName, userEmail, currency, lowStockThreshold };
-    navigator.clipboard.writeText(JSON.stringify(data));
-    alert("Data copied to clipboard! Now open the Installed App and paste it there.");
+    const payload = buildBackup({ businesses, userName, userEmail, currency, lowStockThreshold });
+    if (saveBackupFile(payload)) {
+      alert("Saved to a file. Open BizTrack on the other phone and choose Load from File.");
+    } else {
+      alert("Could not save the file on this device.");
+    }
   };
 
-  const handleImport = () => {
+  /**
+   * Takes the data directly instead of reading it from state.
+   *
+   * It used to read `importData`, which the Paste Code button set immediately
+   * before calling this -- so it parsed the PREVIOUS value, which on a first
+   * attempt was the empty string. Transfer-between-phones therefore failed
+   * every single time with "that doesn't look like a backup code", on the one
+   * screen someone reaches while moving their books to a new device.
+   */
+  const handleImport = (raw) => {
     let parsed;
     try {
       // parseBackup accepts codes exported by older builds too, and migrates
       // them on the way in.
-      parsed = parseBackup(JSON.parse(importData), currency);
+      parsed = parseBackup(typeof raw === "string" ? JSON.parse(raw) : raw, currency);
     } catch {
-      return alert("That doesn't look like a backup code.");
+      return alert("That doesn't look like a BizTrack backup.");
     }
-    if (!parsed) return alert("That backup code is missing or has damaged business data.");
+    if (!parsed) return alert("That backup is missing or has damaged business data, so nothing was changed.");
 
     replaceBusinesses(parsed.businesses);
     if (parsed.userName) setUserName(parsed.userName);
@@ -2318,18 +2331,35 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
 
               {showImport && (
                 <div style={{ display: "flex", gap: 8, animation: "fadeIn 0.3s ease" }}>
-                  <button 
-                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
+                  <button
+                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }}
                     onClick={handleExport}
-                  >Export Code</button>
-                  <button 
-                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
-                    onClick={() => {
-                      const code = prompt("Paste your backup code:");
-                      if (code) { setImportData(code); handleImport(); }
+                  >Save to File</button>
+                  <button
+                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }}
+                    onClick={async () => {
+                      let raw;
+                      try {
+                        raw = await pickBackupFile();
+                      } catch (err) {
+                        return alert(err.message);
+                      }
+                      if (raw) handleImport(raw);
                     }}
-                  >Paste Code</button>
+                  >Load from File</button>
                 </div>
+              )}
+
+              {showImport && (
+                <button
+                  style={{ ...S.textBtn, color: "rgba(255,255,255,0.45)", fontSize: 11, marginTop: 10 }}
+                  onClick={() => {
+                    const code = prompt("Paste your backup code:");
+                    if (code) handleImport(code);
+                  }}
+                >
+                  I have a code from an older version
+                </button>
               )}
             </div>
           </div>
@@ -2784,15 +2814,31 @@ function AccountScreen({ ctx }) {
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Data Management</p>
           <div style={S.settingsCard}>
+             {/*
+               A file, not the clipboard. A few hundred sales is tens to
+               hundreds of kilobytes, and that pasted into a prompt() on Android
+               truncates silently -- which restores PART of someone's books and
+               looks like it worked. A file also survives, can be kept, and can
+               be sent over WhatsApp, which is how these users move things
+               between phones.
+             */}
              <div style={S.settingsRow} onClick={() => {
-               const data = { businesses, userName, userEmail: ctx.userEmail, currency: ctx.currency, lowStockThreshold: ctx.lowStockThreshold };
-               navigator.clipboard.writeText(JSON.stringify(data));
-               showToast("Data copied to clipboard!");
+               const payload = buildBackup({
+                 businesses, userName, userEmail: ctx.userEmail,
+                 currency: ctx.currency, lowStockThreshold: ctx.lowStockThreshold,
+               });
+               const totals = summarizeLocal(businesses);
+               if (saveBackupFile(payload)) {
+                 track("backup.save_file", { count: totals.businesses });
+                 showToast(`Saved ${totals.businesses} business${totals.businesses === 1 ? "" : "es"} to a file.`);
+               } else {
+                 showToast("Could not save the file on this device.");
+               }
              }}>
                <Download size={20} color="#3A7D2C" />
                <div style={{ flex: 1 }}>
-                 <p style={S.settingsRowLabel}>Backup Data</p>
-                 <p style={S.settingsRowSub}>Copy your data to move to another device.</p>
+                 <p style={S.settingsRowLabel}>Save My Data to a File</p>
+                 <p style={S.settingsRowSub}>Keep a copy, or move your books to another phone.</p>
                </div>
              </div>
              <div style={S.settingsDivider} />
@@ -2805,26 +2851,45 @@ function AccountScreen({ ctx }) {
                </div>
              </div>
              <div style={S.settingsDivider} />
-             <div style={S.settingsRow} onClick={() => {
-               const code = prompt("Paste your backup code here:");
-               if (!code) return;
-               let parsed;
+             {/*
+               Restore genuinely replaces everything -- it is the one bulk write
+               left in the app -- so the confirmation states what arrives AND
+               what goes, in counts rather than in the word "data". parseBackup
+               validates before any of it is trusted.
+             */}
+             <div style={S.settingsRow} onClick={async () => {
+               let raw;
                try {
-                 parsed = parseBackup(JSON.parse(code), ctx.currency);
-               } catch {
-                 return alert("That doesn't look like a backup code.");
+                 raw = await pickBackupFile();
+               } catch (err) {
+                 return alert(err.message);
                }
-               if (!parsed) return alert("That backup code is missing or has damaged business data.");
+               if (!raw) return; // cancelled; not an error, say nothing
+
+               const parsed = parseBackup(raw, ctx.currency);
+               if (!parsed) return alert("That backup is missing or has damaged business data, so nothing was changed.");
+
+               const incoming = summarizeLocal(parsed.businesses);
+               const current = summarizeLocal(businesses);
+
+               if (!confirm(
+                 "Restore this backup?" + "\n\n" +
+                 `Coming in: ${incoming.businesses} businesses, ${incoming.items} items, ${incoming.sales} sales.` + "\n" +
+                 `On this phone now: ${current.businesses} businesses, ${current.items} items, ${current.sales} sales.` + "\n\n" +
+                 "Everything currently on this phone is replaced. If you need it, cancel and save it to a file first."
+               )) return;
+
                ctx.replaceBusinesses(parsed.businesses);
                if (parsed.userName) ctx.setUserName(parsed.userName);
                if (parsed.userEmail) ctx.setUserEmail(parsed.userEmail);
                if (parsed.currency) ctx.setCurrency(parsed.currency);
-               showToast(`Restored ${parsed.businesses.length} business${parsed.businesses.length === 1 ? "" : "es"}.`);
+               track("backup.restore_file", { count: incoming.businesses });
+               showToast(`Restored ${incoming.businesses} business${incoming.businesses === 1 ? "" : "es"}.`);
              }}>
                <Upload size={20} color="#8B6914" />
                <div style={{ flex: 1 }}>
-                 <p style={S.settingsRowLabel}>Restore Data</p>
-                 <p style={S.settingsRowSub}>Import data from a backup code.</p>
+                 <p style={S.settingsRowLabel}>Restore From a File</p>
+                 <p style={S.settingsRowSub}>Load books saved from this or another phone.</p>
                </div>
              </div>
           </div>
