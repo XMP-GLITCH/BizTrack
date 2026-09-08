@@ -176,3 +176,86 @@ src/backend/   Supabase client, row mappers, auth, sync. Degrades to local-only.
 src/screens/   AuthScreen. Everything else still lives in App.jsx.
 supabase/      migrations · tests (RLS + round trip) · setup-all.sql
 ```
+
+---
+
+## Session log — 7 September 2026
+
+The move to VS Code described above actually happened on this date. What
+changed, and what was measured against the live service rather than assumed.
+
+### This checkout
+
+`C:\Users\EAE\projects\biztrack`, a fresh clone on `claude/repo-review-54joy7`.
+
+The previous working copy at `C:\Users\EAE\Downloads\files\biztrack` is a clone
+of **`main`** — v1.5.9, the pre-ledger local-only app, with no `CLAUDE.md`, no
+`supabase/`, no `src/domain/` and no `src/backend/`. It was left in place
+deliberately for the owner to delete. It holds nothing unique: no unpushed
+commits, no stashes, and only `build.log`, `dist/` and `node_modules/` outside
+git. If it is still there and someone is confused about which folder is which,
+that is why.
+
+`main` and the branch have not been merged. `main` is still v1.5.9.
+
+### Verified against the live Supabase project
+
+Probed directly, not inferred:
+
+| Check | Result |
+|---|---|
+| Network to `*.supabase.co` | Reachable |
+| Project `ufyyurmekegbzkqjisdb` | Live |
+| Publishable key in `LOCAL_SETUP.md` | Valid |
+| Email provider / sign-ups | Both enabled |
+| **Schema applied** | **No** |
+| **`mailer_autoconfirm`** | **`false` — "Confirm email" still ON** |
+
+`GET /rest/v1/businesses` returns exactly the failure predicted above:
+
+```
+PGRST205 — Could not find the table 'public.businesses' in the schema cache
+```
+
+So the Phase 2 blocker is unchanged and now confirmed live: `setup-all.sql` has
+still never been run. The network unreachability noted under "Not proven" was an
+environment limitation, not a project problem — the service answers fine from
+this machine.
+
+### Tooling installed
+
+Supabase CLI **v2.116.0** at
+`C:\Users\EAE\AppData\Local\Programs\supabase\supabase.exe`, appended to the
+**User** PATH (38 → 39 entries; prior value backed up before the edit). It needs
+a terminal started after the install to resolve.
+
+Dead ends on this machine, so nobody repeats them: no winget package exists,
+Scoop is not installed, and `npm i -g supabase` is blocked by Supabase upstream.
+The GitHub release zip is the route that works — verify the SHA256 against the
+release `checksums.txt`, and expect GitHub to be slow enough that the download
+needs `curl -C -` to resume.
+
+### Still outstanding
+
+1. `.env.local` does not exist in this checkout. Until it does the app runs
+   local-only and never contacts Supabase. Values are in `LOCAL_SETUP.md` §2.
+2. Apply the schema — CLI (`login` → `link` → `db push`) or paste
+   `supabase/setup-all.sql` into the dashboard SQL Editor.
+3. Turn off "Confirm email" and add `http://localhost:5173` to the redirect
+   allowlist. Both are dashboard-only; neither can be done from the CLI or the
+   publishable key.
+
+### A note on the old `main`, for context
+
+A read of `main` turned up several defects, and the branch already fixes all of
+them: the `beforeinstallprompt` listener was never registered (so the Android
+install prompt could never appear), `index.html` read the wrong storage key for
+the theme, `vite.config.js` used `__dirname` in an ESM config, and the rescue
+code scanned the *live* storage key alongside the legacy ones. Nothing to do —
+recorded only so the same findings are not re-reported as new.
+
+One loose thread genuinely explains the v1.5.3–v1.5.7 emergency history:
+`idb-keyval` was still installed in the old checkout but absent from
+`package.json`. The store used to persist to IndexedDB and later moved to
+`localStorage`, which is what stranded people's books and forced the whole Data
+Rescue system into existence.
