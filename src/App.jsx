@@ -651,7 +651,9 @@ export default function BizTrack() {
     if (allowed) flushAnalytics();
   };
 
-  const ctx = { businesses, analyticsConsent, chooseAnalytics, replaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const startSignIn = () => setSkippedAuth(false);
+
+  const ctx = { businesses, analyticsConsent, chooseAnalytics, startSignIn, replaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -1506,14 +1508,51 @@ function SettingsScreen({ ctx }) {
               <ChevronRight size={20} color="#9B7B5E" />
             </div>
             <div style={S.settingsDivider} />
-            <div style={S.settingsRow} onClick={() => showToast(isBackendConfigured ? "Cloud sync is on — sign in from Account." : "Cloud sync needs an account.")}>
-              <Cloud size={20} color="#9B7B5E" />
-              <div style={{ flex: 1 }}>
-                <p style={S.settingsRowLabel}>Cloud Backup</p>
-                <p style={S.settingsRowSub}>Sync across devices (v2)</p>
+            {/*
+              The route an existing local-only user takes to get an account.
+              Before this, declining the sign-in screen set skippedAuth and
+              nothing ever cleared it, so there was no way back inside the app
+              -- and this row still advertised cloud backup as "Soon" while it
+              was running.
+            */}
+            {!isBackendConfigured ? (
+              <div style={S.settingsRow}>
+                <Cloud size={20} color="#9B7B5E" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Cloud Backup</p>
+                  <p style={S.settingsRowSub}>Not available in this build.</p>
+                </div>
               </div>
-              <span style={{ ...S.settingsRowSub, color: "var(--accent-color)", fontWeight:700 }}>Soon</span>
-            </div>
+            ) : ctx.auth?.session ? (
+              <div style={S.settingsRow} onClick={() => {
+                if (confirm("Sign out?\n\nYour records stay on this device — signing out never deletes them.")) {
+                  ctx.signOutOfAccount();
+                  showToast("Signed out. Your records are still here.");
+                }
+              }}>
+                <Cloud size={20} color="#3A7D2C" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Backed up to your account</p>
+                  <p style={S.settingsRowSub}>
+                    {ctx.auth.session.user?.email || "Signed in"}
+                    {ctx.sync?.status === "offline" ? " · waiting for a connection" : ""}
+                    {ctx.sync?.status === "synced" ? " · up to date" : ""}
+                  </p>
+                </div>
+                <span style={{ ...S.settingsRowSub, color: "var(--accent-color)", fontWeight: 700 }}>Sign out</span>
+              </div>
+            ) : (
+              <div style={S.settingsRow} onClick={() => { track("account.start_from_settings"); ctx.startSignIn(); }}>
+                <Cloud size={20} color="var(--accent-color)" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Back up to an account</p>
+                  <p style={S.settingsRowSub}>
+                    Keep your books if this phone is lost, and reach them from another one. Nothing on this device is removed.
+                  </p>
+                </div>
+                <ChevronRight size={20} color="var(--text-secondary)" />
+              </div>
+            )}
           </div>
         </div>
 
