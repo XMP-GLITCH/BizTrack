@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
+import { Home, BarChart2, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, Sparkles, CheckCircle2, RefreshCw, ScrollText } from "lucide-react";
 import { useStore, selectBusinesses, selectInventory, readSnapshot, STORAGE_KEY } from "./store/useStore";
 import { formatMoney, toMinor, toMajor, marginPercent, CURRENCIES } from "./domain/money.js";
 import { calcBizStats, calcPortfolioStats, saleRevenue, saleCost, saleProfit, saleDiscount, getStatus } from "./domain/stats.js";
@@ -9,8 +9,14 @@ import { parseBackup, migrateState, verifyMigration } from "./domain/migrate.js"
 import { isBackendConfigured } from "./backend/supabase.js";
 import { useAuth } from "./backend/useAuth.js";
 import { useSync } from "./backend/useSync.js";
-import { signOut } from "./backend/auth.js";
+import { useClaim } from "./backend/useClaim.js";
+import { signOut, deleteAccount } from "./backend/auth.js";
 import AuthScreen from "./screens/AuthScreen.jsx";
+import LegalScreen from "./screens/LegalScreen.jsx";
+import ClaimScreen from "./screens/ClaimScreen.jsx";
+import { DOCUMENTS } from "./legal/documents.js";
+import { track, startAnalytics, setAppVersion, getConsent, setConsent, flush as flushAnalytics } from "./analytics/analytics.js";
+import { installErrorCapture } from "./analytics/errors.js";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
@@ -30,7 +36,7 @@ const UPDATE_LOG = [
   { version: "v1.5.3", date: "May 9, 2026", title: "Emergency Data Rescue", changes: ["Implemented automatic restoration for data stuck in old storage versions.", "Added manual 'Rescue' tool on onboarding screen for absolute data safety.", "Hardened storage reliability for existing users."] },
   { version: "v1.5.2", date: "May 9, 2026", title: "Smart Notifications", changes: ["Real-time low-stock alerts when sales drop inventory below threshold.", "Background update notifications even when the app is closed.", "Standardized PWA branding and theme-color support."] },
   { version: "v1.4.5", date: "May 8, 2026", title: "About & Updates", changes: ["Added dedicated About section with feature list.", "Integrated Update Log for better transparency.", "Standardized versioning across the app."] },
-  { version: "v1.4.3", date: "May 8, 2026", title: "Onboarding & Personas", changes: ["Refined onboarding flow for new users.", "Added premium Persona picker in Account settings.", "Improved local data encryption stability."] },
+  { version: "v1.4.3", date: "May 8, 2026", title: "Onboarding & Personas", changes: ["Refined onboarding flow for new users.", "Added premium Persona picker in Account settings.", "Improved local data storage reliability."] },
   { version: "v1.4.1", date: "May 8, 2026", title: "UI Polish", changes: ["Decoupled toast notifications from modals.", "Generalized sale entry labels for craft businesses.", "Fixed layout issues on narrow screens."] },
   { version: "v1.4.0", date: "May 7, 2026", title: "Performance & Security", changes: ["Hardened security logic for PIN lock.", "Optimized PWA installation prompts.", "Audit and fix for critical runtime crashes."] },
   { version: "v1.3.0", date: "Apr 28, 2026", title: "Dark Mode & Charts", changes: ["Full Dark Mode support implemented.", "Enhanced Analytics with interactive Recharts.", "Improved profit margin visualizations."] },
@@ -372,7 +378,18 @@ export default function BizTrack() {
   // session storage and refresh, and duplicating it is how you end up showing
   // someone as signed in against a token that expired days ago.
   const auth = useAuth();
-  const sync = useSync(auth.userId);
+  const [analyticsConsent, setAnalyticsConsentState] = useState(() => getConsent());
+  const claim = useClaim(auth.userId);
+  // Held until the user has said what should happen to books already on this
+  // device. Pushing first and asking afterwards would make the question moot.
+  const sync = useSync(auth.userId, { paused: claim.needed || claim.checking });
+
+  useEffect(() => {
+    setAppVersion(VERSION);
+    startAnalytics();
+    installErrorCapture();
+  }, []);
+
   // Chosen explicitly by the user on the sign-in screen; not persisted, so the
   // choice is re-offered next launch rather than silently stranding them local.
   const [skippedAuth, setSkippedAuth] = useState(false);
@@ -490,6 +507,10 @@ export default function BizTrack() {
   const setLowStockThreshold = useStore(s => s.setLowStockThreshold);
 
   const [screen, setScreen] = useState("home");
+
+  // Screen views. `screen` is the only dependency: this records navigation,
+  // not re-renders.
+  useEffect(() => { track("screen.view", { screen }); }, [screen]);
   const [activeBizId, setActiveBizId] = useState(null);
   const [bizTab, setBizTab] = useState("overview");
   const [modal, setModal] = useState(null); // null | "addBiz" | "addItem" | "restock" | "addSale" | "editBiz" | "deleteBiz" | "toast"
@@ -525,11 +546,13 @@ export default function BizTrack() {
 
   const addBusiness = (data) => {
     storeAddBusiness(data);
+    track("business.add", { count: businesses.length + 1 });
     showToast("Business added!");
   };
 
   const deleteBusiness = (id) => {
     storeDeleteBusiness(id);
+    track("business.delete");
     setModal(null);
     setActiveBizId(null);
     setScreen("home");
@@ -540,6 +563,7 @@ export default function BizTrack() {
   // fields on the item, so later restocks at different prices can't rewrite them.
   const addInventoryItem = (bizId, item) => {
     storeAddItem(bizId, item);
+    track("item.add");
     showToast("Item added to inventory!");
   };
 
@@ -551,21 +575,27 @@ export default function BizTrack() {
       // current average -- it leaves the average untouched.
       unitCost: newUnitCost === null || newUnitCost === undefined ? (item?.avgCost ?? 0) : newUnitCost,
     });
+    track("item.restock", { ok: newUnitCost !== null && newUnitCost !== undefined });
     showToast("Stock topped up!");
   };
 
   const deleteInventoryItem = (bizId, itemId) => {
     storeDeleteItem(bizId, itemId);
+    track("item.delete");
     showToast("Item removed.");
   };
 
   const addSale = (bizId, sale) => {
     const { item } = storeRecordSale(bizId, sale);
+    // `kind` separates inventoried sales from one-off custom work, which is
+    // the split worth knowing. Neither carries what was sold or for how much.
+    track("sale.record", { kind: sale?.isCustom ? "custom" : "item" });
     showToast("Sale recorded!");
 
     if (!item) return;
     if (hasStockDiscrepancy(item)) {
       // The sale is kept -- it happened. Surface the mismatch to reconcile.
+      track("stock.oversold");
       showToast(`${item.name} is oversold by ${Math.abs(item.qty)}. Check your stock.`);
       return;
     }
@@ -613,7 +643,15 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, replaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const chooseAnalytics = (allowed) => {
+    setConsent(allowed);
+    setAnalyticsConsentState(allowed);
+    // Only meaningful when allowed; track() is a no-op otherwise.
+    track("analytics.consent", { ok: allowed, first_run: true });
+    if (allowed) flushAnalytics();
+  };
+
+  const ctx = { businesses, analyticsConsent, chooseAnalytics, replaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -658,8 +696,79 @@ export default function BizTrack() {
     );
   }
 
+  if (claim.needed) {
+    return (
+      <ClaimScreen
+        styles={S}
+        local={claim.local}
+        remote={claim.remote}
+        businesses={businesses}
+        onResolve={(strategy) => {
+          const result = claim.resolve(strategy);
+          if (result.ok) {
+            track("claim.resolve", { kind: strategy });
+            // Sync unpauses on the next render and does the actual work.
+            showToast(strategy === "adopt"
+              ? "Loading your account's books…"
+              : "Backing up your books…");
+          }
+          return result;
+        }}
+      />
+    );
+  }
+
   if (!onboardingComplete) return <Onboarding ctx={ctx} deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />;
   if (isPinEnabled && !isUnlocked) return <PinLock ctx={ctx} onUnlock={() => setIsUnlocked(true)} />;
+
+  // Analytics consent. Nothing is collected until this is answered, so the
+  // prompt is a gate on collection rather than a notice about it.
+  if (isBackendConfigured && analyticsConsent === null) {
+    return (
+      <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
+        <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }}>
+          <div style={{ background: "rgba(255,255,255,0.08)", width: 62, height: 62, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+            <TrendingUp size={30} color="#FAF8F4" />
+          </div>
+          <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 24, marginBottom: 10 }}>
+            Help us fix what breaks
+          </h1>
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: "rgba(255,255,255,0.75)", margin: "0 0 14px" }}>
+            BizTrack is in beta. If you allow it, the app will tell us which screens you
+            open, which features you use, and when something crashes — so we fix the
+            right things.
+          </p>
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: "rgba(255,255,255,0.55)", margin: "0 0 6px" }}>
+            <strong style={{ color: "rgba(255,255,255,0.8)" }}>We never send your business data.</strong> No item
+            names, no prices, no sales figures, no customer details. Only which parts of
+            the app were used.
+          </p>
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: "rgba(255,255,255,0.55)", margin: "0 0 22px" }}>
+            You can change this any time in Settings.
+          </p>
+
+          <button
+            style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 0 }}
+            onClick={() => chooseAnalytics(true)}
+          >
+            Allow
+          </button>
+          <button
+            style={{ ...S.primaryBtn, background: "transparent", color: "#FAF8F4", border: "1px solid rgba(255,255,255,0.25)", marginTop: 10 }}
+            onClick={() => chooseAnalytics(false)}
+          >
+            No thanks
+          </button>
+          <button
+            style={{ ...S.textBtn, color: "rgba(255,255,255,0.5)", fontSize: 12, marginTop: 16 }}
+            onClick={() => setScreen("privacy")}
+          >
+            Read the Privacy Policy
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={S.shell}>
@@ -671,6 +780,8 @@ export default function BizTrack() {
           {screen === "analytics" && <AnalyticsScreen ctx={ctx} />}
           {screen === "account" && <AccountScreen ctx={ctx} />}
           {screen === "about" && <AboutScreen ctx={ctx} />}
+          {screen === "privacy" && <LegalScreen styles={S} doc={DOCUMENTS.privacy} onBack={() => setScreen("settings")} />}
+          {screen === "terms" && <LegalScreen styles={S} doc={DOCUMENTS.terms} onBack={() => setScreen("settings")} />}
         </div>
         <InstallPrompt deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />
         <BottomNav ctx={ctx} />
@@ -1395,7 +1506,7 @@ function SettingsScreen({ ctx }) {
               <ChevronRight size={20} color="#9B7B5E" />
             </div>
             <div style={S.settingsDivider} />
-            <div style={S.settingsRow} onClick={() => showToast("Cloud sync coming in v2!")}>
+            <div style={S.settingsRow} onClick={() => showToast(isBackendConfigured ? "Cloud sync is on — sign in from Account." : "Cloud sync needs an account.")}>
               <Cloud size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Cloud Backup</p>
@@ -1415,6 +1526,24 @@ function SettingsScreen({ ctx }) {
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>About BizTrack</p>
                 <p style={S.settingsRowSub}>Version {VERSION} · Features & Updates</p>
+              </div>
+              <ChevronRight size={20} color="var(--text-secondary)" />
+            </div>
+            <div style={S.settingsDivider} />
+            <div style={S.settingsRow} onClick={() => setScreen("privacy")}>
+              <Shield size={20} color="var(--accent-color)" />
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Privacy Policy</p>
+                <p style={S.settingsRowSub}>What we store, where it goes, and your rights.</p>
+              </div>
+              <ChevronRight size={20} color="var(--text-secondary)" />
+            </div>
+            <div style={S.settingsDivider} />
+            <div style={S.settingsRow} onClick={() => setScreen("terms")}>
+              <ScrollText size={20} color="var(--accent-color)" />
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Terms of Service</p>
+                <p style={S.settingsRowSub}>Trial, pricing, and what we do and don't promise.</p>
               </div>
               <ChevronRight size={20} color="var(--text-secondary)" />
             </div>
@@ -1952,7 +2081,7 @@ function AboutScreen({ ctx }) {
     { icon: <Store size={20} />, title: "Multi-Business Management", desc: "Track and manage multiple business ventures from a single unified dashboard." },
     { icon: <Package size={20} />, title: "Smart Inventory Tracking", desc: "Real-time stock monitoring with intelligent low-stock alerts and cost-per-unit analysis." },
     { icon: <TrendingUp size={20} />, title: "Performance Analytics", desc: "Visualize your growth with profit rankings, revenue charts, and detailed business insights." },
-    { icon: <Lock size={20} />, title: "Private by default", desc: "Your records stay on your device, with an optional PIN lock to keep casual eyes out." },
+    { icon: <Lock size={20} />, title: "Yours, and portable", desc: "Records are stored on your device and, if you sign in, backed up to your account so you can reach them from another phone. Export everything as CSV whenever you want." },
     { icon: <Cloud size={20} />, title: "Local-First / PWA Ready", desc: "Install BizTrack on your home screen for a native experience that works offline." },
     { icon: <Sparkles size={20} />, title: "Custom Sales Entry", desc: "Flexible recording for both inventoried products and custom one-off services." }
   ];
@@ -2689,6 +2818,68 @@ function AccountScreen({ ctx }) {
             </div>
           </div>
         </div>
+
+        {/* PRIVACY */}
+        {isBackendConfigured && (
+          <div style={S.settingsSection}>
+            <p style={S.settingsSectionTitle}>Privacy</p>
+            <div style={S.settingsCard}>
+              <div style={S.settingsRow} onClick={() => {
+                const next = !ctx.analyticsConsent;
+                ctx.chooseAnalytics(next);
+                showToast(next ? "Thank you — usage data on." : "Usage data off. Queue cleared.");
+              }}>
+                <TrendingUp size={20} color="#9B7B5E" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Share usage data</p>
+                  <p style={S.settingsRowSub}>
+                    Which screens and features you use, and crashes. Never your business data.
+                  </p>
+                </div>
+                <div style={{ width: 40, height: 20, background: ctx.analyticsConsent ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
+                  <div style={{ width: 16, height: 16, background: "var(--card-bg)", borderRadius: "50%", position: "absolute", top: 2, left: ctx.analyticsConsent ? 22 : 2, transition: "0.3s" }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ACCOUNT DELETION — right to erasure, self-service. */}
+        {isBackendConfigured && ctx.auth?.session && (
+          <div style={S.settingsSection}>
+            <p style={S.settingsSectionTitle}>Danger Zone</p>
+            <div style={S.settingsCard}>
+              <div style={S.settingsRow} onClick={async () => {
+                // Two gates on purpose. The first is the one that matters: it
+                // offers the export BEFORE anything is destroyed, because the
+                // cloud copy may be the only backup of someone's books.
+                if (!confirm(
+                  "Delete your account?\n\n" +
+                  "This erases your account and every record stored on our servers. It cannot be undone.\n\n" +
+                  "Records on THIS device are NOT deleted — they stay until you clear the app.\n\n" +
+                  "Export your data first if you have not already. Cancel now to do that."
+                )) return;
+
+                // Typed confirmation, not a second tap. A destructive action
+                // reached by muscle memory is not a decision.
+                const typed = prompt('Type DELETE to confirm. This cannot be undone.');
+                if (typed !== "DELETE") return showToast("Not deleted.");
+
+                showToast("Deleting your account…");
+                const { error } = await deleteAccount();
+                if (error) return showToast(error.message);
+                showToast("Account deleted. Your device records are still here.");
+                setScreen("home");
+              }}>
+                <Trash2 size={20} color="#C0392B" />
+                <div style={{ flex: 1 }}>
+                  <p style={{ ...S.settingsRowLabel, color: "#C0392B" }}>Delete Account</p>
+                  <p style={S.settingsRowSub}>Erase your account and everything stored on our servers. Records on this device stay.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* APP INFO */}
         <div style={S.settingsSection}>
