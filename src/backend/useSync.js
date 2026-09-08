@@ -15,13 +15,16 @@ import { syncOnce } from "./sync.js";
  */
 const INTERVAL_MS = 5 * 60 * 1000;
 
-export function useSync(userId) {
+export function useSync(userId, { paused = false } = {}) {
   const [status, setStatus] = useState("idle"); // idle | syncing | synced | offline
   const [lastError, setLastError] = useState(null);
   const running = useRef(false);
 
   const run = useCallback(async () => {
-    if (!isBackendConfigured || !userId || running.current) return;
+    // `paused` is how the claim flow holds the loop while the user decides what
+    // should happen to books already on this device. Pushing first and asking
+    // afterwards would make the question meaningless.
+    if (!isBackendConfigured || !userId || paused || running.current) return;
     running.current = true;
     setStatus("syncing");
 
@@ -40,10 +43,10 @@ export function useSync(userId) {
       setLastError(result.error ?? null);
     }
     running.current = false;
-  }, [userId]);
+  }, [userId, paused]);
 
   useEffect(() => {
-    if (!isBackendConfigured || !userId) return;
+    if (!isBackendConfigured || !userId || paused) return;
 
     // Deferred rather than immediate: the first sync should not compete with
     // first paint on a low-end phone, and it keeps setState out of the effect
@@ -61,7 +64,7 @@ export function useSync(userId) {
       document.removeEventListener("visibilitychange", onFocus);
       clearInterval(timer);
     };
-  }, [userId, run]);
+  }, [userId, paused, run]);
 
   return { status, lastError, syncNow: run };
 }
