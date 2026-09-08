@@ -28,12 +28,12 @@ spins a loading skeleton when the network drops.
 |---|---|
 | 0 — Stabilise | ✅ Done. Install prompt, hook-order crash, data validation, honest security copy. |
 | 1 — Ledger data model | ✅ Done. Integer money, stock ledger, per-entity store, legacy migration. |
-| 2 — Supabase | 🟡 Code complete and tested. **Schema NOT yet applied to the live project.** |
-| 3 — Public launch | ⬜ Not started. Error tracking, privacy policy, account deletion, backups. |
+| 2 — Supabase | ✅ Done, 8 Sep 2026. Schema applied to the live project, RLS verified against it, Google sign-in working end to end. |
+| 3 — Public launch | 🟡 Mostly built. Error tracking, privacy policy, terms, consent, account deletion, notifications and analytics all landed. Remaining: custom SMTP, a filled-in legal entity, deployed Edge Functions. |
 
-**The immediate blocker:** `supabase/setup-all.sql` has never been run against
-the real project. Until it is, sign-up succeeds but every sync fails with
-`relation "public.businesses" does not exist`. See `LOCAL_SETUP.md`.
+**The schema blocker is gone.** It was applied on 8 September and every table
+answers. What now stands between this and paying users is the list at the end
+of the 8 September session log.
 
 Project ref: `ufyyurmekegbzkqjisdb`. `.env.local` is gitignored and must be
 recreated on each machine, or the app silently runs local-only.
@@ -83,6 +83,32 @@ Do not "fix" these without discussing:
   Retrofitting tenancy onto live data is the migration to avoid.
 - **`is_business_member()` is `SECURITY DEFINER` on purpose.** A policy on
   `business_members` that queries `business_members` recurses infinitely.
+- **Analytics holds usage only, never business content.** No item names, no
+  amounts, no customer data. Enforced by an allowlist in `src/analytics`, not
+  by call-site discipline. That table reaches dashboards and exports, so a
+  franc of revenue in it would make every future breach a financial one.
+- **There is no cookie banner, deliberately.** No advertising or third-party
+  tracking cookies exist, so a consent dialog would imply consent was needed
+  for things it was not. What *is* asked for is what genuinely needs it:
+  analytics, and transferring data outside Cameroon. Adding a third-party
+  analytics SDK changes this.
+- **The claim flow offers no "keep only this device's books".** With a
+  merge-based sync there is no honest way to deliver it — the next pull brings
+  the account's rows straight back. A choice the code cannot keep is worse than
+  no choice at all.
+- **An unreachable server is never read as an empty one.** `inspectRemote()`
+  returns null on failure and the claim flow then does nothing and asks again
+  next launch. Treating offline as "the account is empty" is how a merge prompt
+  becomes silent data loss.
+- **Every email carries a six-digit code beside its link.** Not a fallback: on
+  Android the link often opens a browser that is not the installed PWA, so the
+  code is the reliable path. `AuthScreen`'s `verify` mode is where it is spent.
+- **Apple sign-in was built, then removed.** It needs a paid Developer Program
+  membership and this audience is overwhelmingly Android. `signInWithApple`
+  stays in `auth.js`; only the button is gone.
+- **The `auth.sessions` trigger can never raise.** Its whole body is wrapped.
+  A missed sign-in notification is acceptable; blocking authentication for
+  everyone is not. Drop statement is in `supabase/functions/README.md`.
 
 ---
 
@@ -130,6 +156,15 @@ npm run build
 ./supabase/tests/roundtrip.sh  # data survives a real Postgres round trip
 ```
 
+Against the live project, pasted into the Supabase SQL Editor:
+
+```
+supabase/rls-check.sql          # is RLS really protecting every table AND view
+supabase/analytics-queries.sql  # which screens, which features, what breaks
+```
+
+Run `rls-check.sql` after ANY schema change.
+
 **Known lint state:** 4 errors and 3 warnings, all pre-existing React hygiene in
 the update-check and PIN paths (`set-state-in-effect`, `purity`,
 `exhaustive-deps`). They need restructuring, not renaming. Do not add
@@ -147,22 +182,42 @@ stock on hand and weighted-average cost all return identical.
 **Proven** in a headless browser against the built app: legacy migration on real
 data, the auth screen, and graceful offline failure.
 
-**Not proven:** the live Supabase service. GoTrue auth, PostgREST behaviour and
-the network round trip to `*.supabase.co` were unreachable from the environment
-this was built in. Expect ordinary integration details on first connection.
+**Proven against the LIVE project, 8 September 2026:** the schema applied
+cleanly; all eight tables reject an anonymous insert with `42501`, meaning RLS
+rejected the row before the foreign key was even checked. Google OAuth returns
+a correct 302 to `accounts.google.com` with the right `client_id` and callback.
+
+That write probe is how to check RLS from outside the database, and it is worth
+remembering: with RLS *off* the same request returns `23503` from the foreign
+key instead, so the two are distinguishable without writing a single row. A
+*read* probe cannot tell them apart — an empty table and a fully protected one
+both return `[]`.
+
+**Not proven:** the three Edge Functions (`notify`, `unsubscribe`,
+`delete-account`) were written with no local Postgres, Docker or Deno on the
+machine, so that TypeScript has never executed and none of it is deployed.
+Email delivery through Brevo is entirely untested.
+
+Also unverified: whether `item_stock` actually has `security_invoker` on. Every
+table is empty, so a leaking view and a working one look identical from
+outside. Query 2 of `rls-check.sql` answers it from inside.
 
 ---
 
 ## Open decisions
 
-1. **Claim-local-data flow.** When someone signs into an account that already
-   has data while their device also holds local books — merge both, or ask them
-   to choose? Merging is safe but can produce a confusing pile.
-2. **App.jsx is still ~2,600 lines.** The split was deferred; state ownership is
-   now settled, so it is safe to do.
-3. **Bundle is 859 KB** (supabase-js added ~209 KB). On a low-end Android over
-   slow data that is a real cost. Code-split the backend and Recharts before
-   launch.
+1. ~~Claim-local-data flow.~~ **Settled 8 Sep.** Ask, never decide silently;
+   default to merging, because the merge is a union and loses nothing; write a
+   backup before anything changes. `src/backend/claim.js` and `ClaimScreen`.
+2. **App.jsx is now 3,108 lines**, up from ~2,600 — the 8 September work made
+   this worse, not better. New screens went to their own files, but the settings
+   rows, consent gate and claim wiring all landed in App.jsx. State ownership is
+   settled, so the split is still safe; there is just more of it.
+3. **Bundle is 917 KB** (262 KB gzipped), up from 859 KB: supabase-js is ~209 KB
+   of it and the 8 September work added ~58 KB more. On a low-end Android over
+   slow data this is a real cost, and it is now the largest single lever on the
+   experience of the device these users actually own. Code-split the backend and
+   Recharts before launch.
 
 ---
 
@@ -172,10 +227,18 @@ this was built in. Expect ordinary integration details on first connection.
 src/domain/    Business rules, framework-free, fully tested.
                money · inventory (ledger) · stats · schema · migrate
 src/store/     Zustand store. Per-entity actions, persisted to localStorage.
-src/backend/   Supabase client, row mappers, auth, sync. Degrades to local-only.
-src/screens/   AuthScreen. Everything else still lives in App.jsx.
-supabase/      migrations · tests (RLS + round trip) · setup-all.sql
+src/backend/   Supabase client, row mappers, auth, sync, claim.
+               Degrades to local-only throughout.
+src/analytics/ Usage telemetry, crash capture, error boundary. Allowlisted.
+src/legal/     Privacy policy and terms, as data. One file, lawyer-readable.
+src/screens/   AuthScreen · LegalScreen · ClaimScreen. The rest is in App.jsx.
+supabase/      migrations · functions (Edge) · emails · tests
+               setup-all.sql · rls-check.sql · analytics-queries.sql
 ```
+
+`supabase/setup-all.sql` now holds FIVE migrations and is still not idempotent.
+A project that already ran the first three must apply only the two newer
+migration files — never re-run setup-all.
 
 ---
 
@@ -259,3 +322,84 @@ One loose thread genuinely explains the v1.5.3–v1.5.7 emergency history:
 `package.json`. The store used to persist to IndexedDB and later moved to
 `localStorage`, which is what stranded people's books and forced the whole Data
 Rescue system into existence.
+
+---
+
+## Session log — 8 September 2026
+
+Phase 2 finished and most of Phase 3 built, in one session, on branch
+`claude/repo-review-54joy7`. Nine commits, `5ee30ba`..`c74a8a9`.
+
+### What got unblocked
+
+`setup-all.sql` was pasted into the SQL Editor and applied. `.env.local` was
+recreated from `LOCAL_SETUP.md` §2 and confirmed to reach Vite — checked in the
+*served module*, not just on disk, because a file that exists and a file that
+Vite has picked up are different claims.
+
+"Confirm email" is now **off** (`mailer_autoconfirm: true`) and
+`http://localhost:5173` is in the redirect allowlist. The latter was confirmed
+indirectly and neatly: Supabase silently replaces a non-allowlisted
+`redirect_to` with the Site URL, and it came back intact.
+
+Google sign-in is live. The Cloud Console client is a **Web application** type —
+the OAuth exchange happens in Supabase, not the browser — with
+`https://ufyyurmekegbzkqjisdb.supabase.co/auth/v1/callback` as the redirect URI.
+Scopes are `email profile`, which are non-sensitive, so publishing the consent
+screen needed no Google review.
+
+### What was built
+
+- **Auth:** Google sign-in; six-digit code verification (`verifyOtp`) so a
+  confirmation or password reset can be finished *inside* the app; a clickwrap
+  consent gate that records the accepted `LEGAL_VERSION` on user metadata.
+- **Email:** five branded auth templates in `supabase/emails` (regenerate with
+  `generate.py`), plus a queue-backed notification sender — trial warnings,
+  low stock, weekly summary, new sign-in — through Brevo.
+- **Legal:** privacy policy and terms in `src/legal/documents.js`, rendered
+  in-app by `LegalScreen`, plus self-service account deletion.
+- **Analytics:** first-party usage telemetry and crash capture, opt-in, with a
+  90-day retention job and eight ready-made queries.
+- **Claim flow:** the path an existing local-only user takes to get an account.
+
+### Two false claims were shipping, and are now fixed
+
+Worth recording because both were live liability, not untidiness:
+
+- About said **"Your records stay on your device."** True before Phase 2, false
+  the moment sync shipped.
+- The v1.4.3 changelog still advertised **"local data encryption stability."**
+  The same claim had already been removed from About for being untrue. The PIN
+  is a screen lock, not encryption.
+
+The lesson generalises: every claim in user-facing copy has to be re-checked
+when the architecture changes under it. The privacy policy written earlier in
+this same session said the app collected no analytics — which the analytics
+work made false two hours later, and it had to be rewritten to match.
+
+### Before anyone else can sign up
+
+1. **`ENTITY` in `src/legal/documents.js` is placeholders.** The policy is live
+   in the app right now showing `[YOUR REGISTERED BUSINESS OR PERSONAL NAME]`.
+2. **Deploy the Edge Functions:** `notify`, `unsubscribe --no-verify-jwt`,
+   `delete-account`. Until then the Delete Account button errors and nothing
+   sends.
+3. **Storage bucket `brand`** with `public/wordmark-light.png`, or every email
+   shows alt text instead of the logo.
+4. **Custom SMTP (Brevo).** This is the real launch blocker: Supabase's built-in
+   sender only delivers to your own team addresses, so a beta tester's
+   confirmation email goes nowhere, silently, while sign-up appears to succeed.
+5. **Lawyer review** of governing law, the liability cap, VAT, and whether
+   cross-border transfer needs more than the consent collected at sign-up.
+6. Then turn "Confirm email" back on.
+
+### Notes for whoever picks this up
+
+The two highest-value engineering jobs are both listed under Open decisions and
+both got worse today: App.jsx grew ~500 lines, and the bundle grew ~58 KB. The
+bundle is the one that touches every user on every launch.
+
+`npm run lint` is still 4 errors and 3 warnings, all pre-existing, all in
+App.jsx. Nothing added on 8 September contributed to it — two new violations
+were introduced during the work and both were fixed rather than suppressed. Keep
+it that way; the count is a useful tripwire precisely because it has not moved.
