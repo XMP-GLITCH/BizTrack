@@ -403,3 +403,72 @@ bundle is the one that touches every user on every launch.
 App.jsx. Nothing added on 8 September contributed to it — two new violations
 were introduced during the work and both were fixed rather than suppressed. Keep
 it that way; the count is a useful tripwire precisely because it has not moved.
+
+---
+
+## Deployment — what is actually live, 9 September 2026
+
+Established by probing Vercel and DNS directly, not from memory. This was not
+written down anywhere and cost a session to rediscover.
+
+### Two Vercel projects, one repo
+
+Both are linked to `XMP-GLITCH/BizTrack` and both build on every push:
+
+| Project | Domains | Status |
+|---|---|---|
+| **`biz-track`** | `biztrack.store`, `www.biztrack.store`, **`biz-track-nine.vercel.app`** | **The live one.** Users are here. |
+| `biz-track-oy5c` | `biz-track-oy5c.vercel.app` | Abandoned duplicate. Delete or disconnect it. |
+
+`biz-track.vercel.app` is **not ours** — that subdomain belongs to another
+Vercel account and serves a Next.js app. That is why the second project got the
+`-oy5c` suffix. Do not chase it.
+
+Production on both is still `e4e14ee` (main, v1.5.9), which contains no Supabase
+code at all. **The branch has never been deployed to production.**
+
+### `biztrack.store` is bought but dead
+
+Registered at Namecheap, on Namecheap's own nameservers
+(`dns1.registrar-servers.com`), with **no A or AAAA records**. Nothing resolves.
+To point it at Vercel: A record `@` → `76.76.21.21`, and a CNAME for `www` whose
+target must be **copied from the Vercel domains tab** — Vercel issues a
+per-project value and its own docs disagree between `cname.vercel-dns.com` and
+`cname.vercel-dns-0.com`.
+
+### The trap that governs the whole migration
+
+**localStorage is per-origin.** Books saved at `biz-track-nine.vercel.app` are
+invisible at `biztrack.store`. A user moved to the new domain before they have
+an account sees an empty app — indistinguishable from total data loss, and the
+exact failure that produced the v1.5.3–v1.5.7 emergency-rescue history.
+
+So the order is fixed, and it is not negotiable:
+
+1. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` on the **`biz-track`**
+   project, visibility **Config** — Vercel refuses `Secret` on a `VITE_` prefix
+   because Vite inlines it into the client bundle, which is correct.
+2. Deploy to the origin users already use.
+3. Get both existing users onto accounts, so their books reach the server.
+4. *Then* point `biztrack.store` at the project.
+
+Anyone without an account moves by **file**, via Settings → Save My Data to a
+File, then Restore From a File on the other device.
+
+### Vite inlines env vars at BUILD time
+
+A deploy without those two variables produces an app that silently runs
+local-only: no sign-in screen, no accounts, no sync, and it looks perfectly
+healthy. Verify a build from outside rather than trusting the dashboard:
+
+```sh
+curl -s <deployment>/assets/index-*.js | grep -q ufyyurmekegbzkqjisdb
+```
+
+Preview deployments are behind `ssoProtection: all_except_custom_domains`, so
+that check needs a Vercel share link — and a beta tester cannot open a preview
+URL at all. Custom domains are exempt, which is one more reason to finish
+`biztrack.store`.
+
+Measured on the branch preview: the bundle is **920 KB**. That is the number the
+code-splitting work has to move.
