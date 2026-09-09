@@ -227,6 +227,11 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
     color: "#FAF8F4",
   };
 
+  // In signup mode the provider buttons are gated on consent. That gate has to
+  // be visible before the tap: a big button that silently refuses, with the
+  // reason in small red text above the fold, reads as a broken button.
+  const oauthGated = mode === "signup" && !accepted;
+
   const oauthBtn = {
     ...S.primaryBtn,
     marginTop: 0,
@@ -237,7 +242,7 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    opacity: busy || oauthBusy ? 0.6 : 1,
+    opacity: busy || oauthBusy || oauthGated ? 0.5 : 1,
   };
 
   const title = {
@@ -393,6 +398,12 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
               <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>or</span>
               <span style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.14)" }} />
             </div>
+
+            {oauthGated && (
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: "0 0 10px", lineHeight: 1.5, textAlign: "center" }}>
+                Tick the box above to continue with Google.
+              </p>
+            )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
