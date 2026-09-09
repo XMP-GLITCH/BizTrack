@@ -202,6 +202,24 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
     }
   };
 
+  /**
+   * Padding and inline-block give these a tappable area. Twelve-pixel inline
+   * text is under every touch-target guideline, and this is the one link a
+   * regulator would ask whether the user could realistically have read.
+   */
+  const legalLinkStyle = {
+    background: "none",
+    border: "none",
+    padding: "3px 1px",
+    margin: 0,
+    display: "inline-block",
+    color: "#FAF8F4",
+    textDecoration: "underline",
+    cursor: "pointer",
+    font: "inherit",
+    lineHeight: 1.4,
+  };
+
   const field = {
     ...S.input,
     background: "rgba(255,255,255,0.08)",
@@ -311,31 +329,52 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
             <p style={{ fontSize: 12, color: "#9BD4A0", margin: 0, fontWeight: 600, lineHeight: 1.4 }}>{notice}</p>
           )}
 
+          {/*
+            Not a <label> around the whole row. A label forwards every click
+            inside it to its control, so wrapping the Terms and Privacy buttons
+            in one made them untappable -- the tap toggled the checkbox instead
+            of opening the document. The label now covers only the box and the
+            plain words; the buttons sit outside any label.
+          */}
           {mode === "signup" && (
-            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", margin: "2px 0 4px" }}>
-              <span
-                onClick={() => setAccepted(!accepted)}
-                style={{
-                  width: 20, height: 20, borderRadius: 6, flexShrink: 0, marginTop: 1,
-                  border: accepted ? "1px solid #FAF8F4" : "1px solid rgba(255,255,255,0.35)",
-                  background: accepted ? "#FAF8F4" : "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
-                {accepted && <Check size={14} color="#2C1810" strokeWidth={3} />}
-              </span>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "2px 0 4px" }}>
               <input
-                type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)}
-                style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
+                id="accept-legal"
+                type="checkbox"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                // Visually hidden but focusable and announced, so the control
+                // is still reachable by keyboard and screen reader.
+                style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
               />
-              <span style={{ fontSize: 12, lineHeight: 1.5, color: "rgba(255,255,255,0.75)" }}>
-                I agree to the{" "}
-                <button type="button" style={{ background: "none", border: "none", padding: 0, color: "#FAF8F4", textDecoration: "underline", cursor: "pointer", font: "inherit" }} onClick={() => setLegalDoc("terms")}>Terms of Service</button>
-                {" "}and{" "}
-                <button type="button" style={{ background: "none", border: "none", padding: 0, color: "#FAF8F4", textDecoration: "underline", cursor: "pointer", font: "inherit" }} onClick={() => setLegalDoc("privacy")}>Privacy Policy</button>
-                , and to my records being stored on servers outside Cameroon so they can sync between my devices.
+
+              <label htmlFor="accept-legal" style={{ cursor: "pointer", flexShrink: 0, marginTop: 1, display: "block" }}>
+                <span
+                  style={{
+                    width: 20, height: 20, borderRadius: 6, display: "flex",
+                    border: accepted ? "1px solid #FAF8F4" : "1px solid rgba(255,255,255,0.35)",
+                    background: accepted ? "#FAF8F4" : "transparent",
+                    alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  {accepted && <Check size={14} color="#2C1810" strokeWidth={3} />}
+                </span>
+              </label>
+
+              <span style={{ fontSize: 12, lineHeight: 1.7, color: "rgba(255,255,255,0.75)" }}>
+                <label htmlFor="accept-legal" style={{ cursor: "pointer" }}>I agree to the</label>{" "}
+                <button type="button" style={legalLinkStyle} onClick={() => setLegalDoc("terms")}>
+                  Terms of Service
+                </button>
+                <label htmlFor="accept-legal" style={{ cursor: "pointer" }}> and </label>
+                <button type="button" style={legalLinkStyle} onClick={() => setLegalDoc("privacy")}>
+                  Privacy Policy
+                </button>
+                <label htmlFor="accept-legal" style={{ cursor: "pointer" }}>
+                  , and to my records being stored on servers outside Cameroon so they can sync between my devices.
+                </label>
               </span>
-            </label>
+            </div>
           )}
 
           <button
