@@ -35,7 +35,7 @@ const RESEND_COOLDOWN_MS = 60_000;
  * support burden with no end.
  *
  * The same reasoning is why `verify` exists. Every email we send carries a
- * six-digit code next to its button, and this screen is where that code is
+ * numeric code next to its button, and this screen is where that code is
  * spent — so confirming an address or resetting a password can be finished
  * inside the app the user already has open, without depending on a link
  * landing in the right browser.
@@ -74,7 +74,10 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
     clear();
 
     if (mode === "verify") {
-      if (code.replace(/\D/g, "").length < 6) return setError("Enter the six-digit code from your email.");
+      // Supabase decides the OTP length, and it is a dashboard setting that can
+      // change under us. Only the minimum is enforced here; the server is what
+      // actually validates the code.
+      if (code.replace(/\D/g, "").length < 6) return setError("Enter the full code from your email.");
     } else if (mode === "newpassword") {
       if (password.length < 6) return setError("Use a password of at least 6 characters.");
     } else {
@@ -256,7 +259,7 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
   const subtitle = {
     signup: "Your books are backed up and follow you to any device.",
     reset: "We'll send a code and a link to set a new password.",
-    verify: `We sent a six-digit code to ${email || "your email"}.`,
+    verify: `We sent a code to ${email || "your email"}.`,
     newpassword: "Pick something you'll remember on a small keyboard.",
     signin: "Sign in to reach your businesses.",
   }[mode];
@@ -316,12 +319,12 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
 
           {mode === "verify" && (
             <input
-              style={{ ...field, textAlign: "center", fontSize: 27, fontWeight: 700, letterSpacing: 9, fontFamily: "monospace" }}
+              style={{ ...field, textAlign: "center", fontSize: 24, fontWeight: 700, letterSpacing: 6, fontFamily: "monospace" }}
               value={code}
               // Strip as they type: people paste "337 509" from a notification.
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 10))}
               placeholder="000000"
-              type="text" inputMode="numeric" maxLength={6}
+              type="text" inputMode="numeric" maxLength={10}
               // Lets Android offer the code straight from the notification.
               autoComplete="one-time-code" autoFocus
             />

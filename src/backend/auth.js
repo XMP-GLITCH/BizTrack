@@ -106,13 +106,14 @@ export async function signInWithApple() {
 }
 
 /**
- * Verify a six-digit code from an email.
+ * Verify a numeric code from an email.
  *
  * The same token Supabase puts behind the link in its emails is also issued as
  * a code, and this exchanges it for a session. That matters more here than the
  * link does: on Android the link frequently opens a browser that is not the
  * installed PWA, so the session lands somewhere the user cannot see it. Typing
- * six digits into the app they already have open always works.
+ * the code into the app they already have open always works. The LENGTH is a
+ * Supabase setting and can change, so nothing here assumes one.
  *
  * `type` is 'signup' after registering, 'recovery' after a password reset, or
  * 'email' for a magic link.
