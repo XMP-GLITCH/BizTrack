@@ -27,6 +27,7 @@ const BREVO_API_KEY = env("BREVO_API_KEY");
 const SENDER_EMAIL = env("BREVO_SENDER_EMAIL");
 const SENDER_NAME = env("BREVO_SENDER_NAME", "BizTrack");
 const APP_URL = env("APP_URL", "http://localhost:5173").replace(/\/+$/, "");
+const REPLY_TO = env("REPLY_TO_EMAIL");
 
 /** How many to send per invocation. Keeps one run inside the CPU limit. */
 const BATCH = Number(env("NOTIFY_BATCH", "50"));
@@ -69,7 +70,7 @@ Deno.serve(async (req) => {
   const db = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const brevo = new Brevo(BREVO_API_KEY, SENDER_EMAIL, SENDER_NAME);
+  const brevo = new Brevo(BREVO_API_KEY, SENDER_EMAIL, SENDER_NAME, REPLY_TO);
 
   const enqueued: Record<string, unknown> = {};
   const problems: string[] = [];

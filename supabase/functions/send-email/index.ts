@@ -30,6 +30,7 @@ const BREVO_API_KEY = env("BREVO_API_KEY");
 const SENDER_EMAIL = env("BREVO_SENDER_EMAIL");
 const SENDER_NAME = env("BREVO_SENDER_NAME", "BizTrack");
 const SUPABASE_URL = env("SUPABASE_URL");
+const REPLY_TO = env("REPLY_TO_EMAIL");
 
 /** Constant-time compare, so a wrong signature leaks nothing through timing. */
 function safeEqual(a: string, b: string): boolean {
@@ -121,7 +122,7 @@ Deno.serve(async (req) => {
     return json({ error: `no template for ${data.email_action_type}` }, 400);
   }
 
-  const brevo = new Brevo(BREVO_API_KEY, SENDER_EMAIL, SENDER_NAME);
+  const brevo = new Brevo(BREVO_API_KEY, SENDER_EMAIL, SENDER_NAME, REPLY_TO);
   const result = await brevo.send({
     to,
     subject: mail.subject,

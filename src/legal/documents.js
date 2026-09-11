@@ -24,11 +24,11 @@
 export const ENTITY = {
   name: "Ewube Arrey Neville Arrey",
   address: "Buea, Cameroon",
-  // Must be an address that is actually monitored -- every regime here requires
-  // a reachable contact for the data controller. hello@biztrack.store is the
-  // intended home for this, but the alias does not exist yet: a test to it came
-  // back "554 5.7.1 Relay access denied". Switch once it forwards.
-  email: "arreyewube273@gmail.com",
+  // On the domain, not a personal Gmail: this appears on a document asking
+  // people to trust us with their business records, and the address they see
+  // should be the one they already trust. Forwards to the business inbox, and
+  // delivery was verified end to end rather than assumed.
+  email: "hello@biztrack.store",
   // WhatsApp is how this audience actually makes contact, so it is offered
   // alongside email rather than instead of it.
   phone: "+237 677 71 69 08",

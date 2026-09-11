@@ -33,6 +33,13 @@ export class Brevo {
     private apiKey: string,
     private senderEmail: string,
     private senderName = "BizTrack",
+    /**
+     * Where a reply should go. The From address is no-reply@ so people do not
+     * treat it as a support channel by default -- but someone locked out of
+     * their books WILL hit reply, and a bounce at that moment is the worst
+     * possible answer. Reply-To sends them somewhere a human reads.
+     */
+    private replyTo = "",
   ) {}
 
   async send(m: Message): Promise<SendResult> {
@@ -50,6 +57,7 @@ export class Brevo {
           to: [{ email: m.to, ...(m.toName ? { name: m.toName } : {}) }],
           subject: m.subject,
           htmlContent: m.html,
+          ...(this.replyTo ? { replyTo: { email: this.replyTo } } : {}),
           ...(m.tag ? { tags: [m.tag] } : {}),
         }),
       });
