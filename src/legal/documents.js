@@ -22,13 +22,20 @@
 // controller and giving no contact address does not satisfy any of the regimes
 // this product operates under.
 export const ENTITY = {
-  name: "[YOUR REGISTERED BUSINESS OR PERSONAL NAME]",
-  address: "[YOUR ADDRESS, CITY, CAMEROON]",
-  email: "[YOUR CONTACT EMAIL]",
+  name: "Ewube Arrey Neville Arrey",
+  address: "Buea, Cameroon",
+  // Must be an address that is actually monitored -- every regime here requires
+  // a reachable contact for the data controller. hello@biztrack.store is the
+  // intended home for this, but the alias does not exist yet: a test to it came
+  // back "554 5.7.1 Relay access denied". Switch once it forwards.
+  email: "arreyewube273@gmail.com",
+  // WhatsApp is how this audience actually makes contact, so it is offered
+  // alongside email rather than instead of it.
+  phone: "+237 677 71 69 08",
   country: "Cameroon",
 };
 
-export const LAST_UPDATED = "7 September 2026";
+export const LAST_UPDATED = "11 September 2026";
 
 const P = (...paragraphs) => paragraphs;
 
@@ -43,7 +50,7 @@ export const PRIVACY_POLICY = {
     {
       heading: "Who is responsible",
       body: P(
-        `BizTrack is operated by ${ENTITY.name}, ${ENTITY.address}. For any question about your data, or to exercise any right described below, contact ${ENTITY.email}.`,
+        `BizTrack is operated by ${ENTITY.name}, ${ENTITY.address}. For any question about your data, or to exercise any right described below, write to ${ENTITY.email} or message ${ENTITY.phone} on WhatsApp.`,
       ),
     },
     {
@@ -111,7 +118,7 @@ export const PRIVACY_POLICY = {
         "You can delete your account and everything in it from Settings → Delete Account. It is immediate and cannot be undone.",
         "You can correct anything that is wrong by editing it in the app.",
         "You can withdraw your agreement to usage data at any time in Settings → Privacy, without losing any feature of the app.",
-        `You can object to how we use your data, or complain, by writing to ${ENTITY.email}. If you are in a country with a data protection authority, you may also complain to it.`,
+        `You can object to how we use your data, or complain, by writing to ${ENTITY.email} or messaging ${ENTITY.phone} on WhatsApp. If you are in a country with a data protection authority, you may also complain to it.`,
       ),
     },
     {
@@ -163,7 +170,7 @@ export const TERMS = {
       body: P(
         "Keep your password to yourself. You are responsible for what happens under your account.",
         "You must be old enough to enter a contract where you live, and the business details you record must be yours.",
-        `Tell us at ${ENTITY.email} if you think someone else has got into your account.`,
+        `Tell us at ${ENTITY.email}, or on WhatsApp at ${ENTITY.phone}, if you think someone else has got into your account.`,
       ),
     },
     {
@@ -249,4 +256,4 @@ export const DOCUMENTS = { privacy: PRIVACY_POLICY, terms: TERMS };
  * Compared against what the user accepted, so a cosmetic edit does not nag
  * everyone and a real change is not silently applied to them.
  */
-export const LEGAL_VERSION = "2026-09-07.2";
+export const LEGAL_VERSION = "2026-09-11";
