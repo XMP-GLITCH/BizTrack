@@ -33,6 +33,33 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        /**
+         * Split the big dependencies into their own chunks.
+         *
+         * This does not shrink the first load much -- the same bytes still
+         * arrive. What it changes is EVERY load after an update: app code
+         * changes on most deploys, these libraries almost never do. Keeping
+         * them separate means a new release invalidates the small app chunk
+         * and leaves ~400 KB of vendor code in the service worker cache.
+         *
+         * For a user paying by the megabyte who gets an update every few days,
+         * that is the difference between re-downloading the whole app and
+         * re-downloading the part that actually changed.
+         */
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("@supabase")) return "supabase";
+          // Vite normalises ids to forward slashes, so a plain check is enough.
+          if (id.includes("react-dom") || id.includes("node_modules/react/")) return "react";
+          if (id.includes("lucide-react")) return "icons";
+          if (id.includes("zustand")) return "store";
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

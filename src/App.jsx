@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Home, BarChart2, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, Sparkles, CheckCircle2, RefreshCw, ScrollText } from "lucide-react";
 import { useStore, selectBusinesses, selectInventory, readSnapshot, STORAGE_KEY } from "./store/useStore";
 import { formatMoney, toMinor, toMajor, marginPercent, CURRENCIES } from "./domain/money.js";
@@ -13,6 +12,10 @@ import { useClaim } from "./backend/useClaim.js";
 import { signOut, deleteAccount } from "./backend/auth.js";
 import AuthScreen from "./screens/AuthScreen.jsx";
 import LegalScreen from "./screens/LegalScreen.jsx";
+// Recharts is the biggest dependency after supabase-js and is needed on one
+// screen. Splitting it out keeps it off the first paint, which on a low-end
+// Android over metered data is the load that actually costs the user money.
+const ProfitChart = lazy(() => import("./screens/ProfitChart.jsx"));
 import ClaimScreen from "./screens/ClaimScreen.jsx";
 import { DOCUMENTS } from "./legal/documents.js";
 import { track, startAnalytics, setAppVersion, getConsent, setConsent, flush as flushAnalytics } from "./analytics/analytics.js";
@@ -1234,23 +1237,9 @@ function AnalyticsScreen({ ctx }) {
         {/* CHART */}
         <p style={S.sectionLabel}>Profit Overview</p>
         <div style={{ ...S.infoCard, height: 200, padding: "20px 10px 10px -10px", marginBottom: 20 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#9B7B5E", fontFamily: "'DM Sans', sans-serif" }} tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={(val) => val >= 1000 ? (val / 1000) + 'k' : val} tick={{ fontSize: 10, fill: "#9B7B5E", fontFamily: "'DM Sans', sans-serif" }} tickLine={false} axisLine={false} width={40} />
-              <Tooltip 
-                cursor={{ fill: "rgba(44,24,16,0.04)" }} 
-                contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 16px rgba(44,24,16,0.1)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: "var(--text-primary)" }} 
-                itemStyle={{ color: "var(--text-primary)" }} 
-                formatter={(value) => [fmt(value), "Profit"]} 
-              />
-              <Bar dataKey="profit" radius={[8, 8, 0, 0]}>
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<div style={{ height: "100%" }} />}>
+            <ProfitChart data={chartData} format={fmt} />
+          </Suspense>
         </div>
 
         {/* PROFIT RANKING */}
