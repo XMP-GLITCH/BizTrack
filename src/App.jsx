@@ -1,15 +1,33 @@
-import { useState, useEffect, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Home, BarChart2, PlusCircle, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, List, History, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
-import { useStore } from "./store/useStore";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { Home, BarChart2, Settings, Store, Package, Coins, AlertTriangle, ArrowLeft, Trash2, Award, DollarSign, Upload, Cloud, Smartphone, ChevronRight, Download, Share, PlusSquare, X, Lock, Moon, Sun, Shield, TrendingUp, Info, Sparkles, CheckCircle2, RefreshCw, ScrollText } from "lucide-react";
+import { useStore, selectBusinesses, selectInventory, readSnapshot, STORAGE_KEY } from "./store/useStore";
+import { formatMoney, toMinor, toMajor, marginPercent, CURRENCIES } from "./domain/money.js";
+import { calcBizStats, calcPortfolioStats, saleRevenue, saleCost, saleProfit, saleDiscount, getStatus } from "./domain/stats.js";
+import { deriveInventory, hasStockDiscrepancy } from "./domain/inventory.js";
+import { parseBackup, migrateState, verifyMigration } from "./domain/migrate.js";
+import { isBackendConfigured } from "./backend/supabase.js";
+import { useAuth } from "./backend/useAuth.js";
+import { useSync } from "./backend/useSync.js";
+import { useClaim } from "./backend/useClaim.js";
+import { signOut, deleteAccount } from "./backend/auth.js";
+import AuthScreen from "./screens/AuthScreen.jsx";
+import LegalScreen from "./screens/LegalScreen.jsx";
+// Recharts is the biggest dependency after supabase-js and is needed on one
+// screen. Splitting it out keeps it off the first paint, which on a low-end
+// Android over metered data is the load that actually costs the user money.
+const ProfitChart = lazy(() => import("./screens/ProfitChart.jsx"));
+import ClaimScreen from "./screens/ClaimScreen.jsx";
+import { DOCUMENTS } from "./legal/documents.js";
+import { track, startAnalytics, setAppVersion, getConsent, setConsent, flush as flushAnalytics } from "./analytics/analytics.js";
+import { installErrorCapture } from "./analytics/errors.js";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { requestNotificationPermission, sendLowStockNotification } from "./utils/notificationService";
+import { buildBackup, saveBackupFile, pickBackupFile } from "./utils/transfer.js";
+import { summarizeLocal } from "./backend/claim.js";
 /* ─── INITIAL DATA ─────────────────────────────────────────────────────────── */
 const COLORS = ["#C17F5A","#8B6914","#7A9B76","#B85C5C","#5C7A8B","#9B5C8B","#5C8B6E","#8B7A5C"];
 const COLOR_NAMES = ["Terracotta","Gold","Sage","Rose","Slate","Plum","Mint","Sand"];
 const CATEGORIES = ["Crochet","Jewelry","Beauty","Food","Fashion","Thrift","Accessories","Other"];
-
-const INIT_BUSINESSES = [];
 
 const EMOJIS = ["🧶","📿","🌿","👗","💍","🎀","🛍️","🧴","🍱","👜","🌸","✨","🪡","🧁","💄"];
 const VERSION = "v1.5.9";
@@ -23,7 +41,7 @@ const UPDATE_LOG = [
   { version: "v1.5.3", date: "May 9, 2026", title: "Emergency Data Rescue", changes: ["Implemented automatic restoration for data stuck in old storage versions.", "Added manual 'Rescue' tool on onboarding screen for absolute data safety.", "Hardened storage reliability for existing users."] },
   { version: "v1.5.2", date: "May 9, 2026", title: "Smart Notifications", changes: ["Real-time low-stock alerts when sales drop inventory below threshold.", "Background update notifications even when the app is closed.", "Standardized PWA branding and theme-color support."] },
   { version: "v1.4.5", date: "May 8, 2026", title: "About & Updates", changes: ["Added dedicated About section with feature list.", "Integrated Update Log for better transparency.", "Standardized versioning across the app."] },
-  { version: "v1.4.3", date: "May 8, 2026", title: "Onboarding & Personas", changes: ["Refined onboarding flow for new users.", "Added premium Persona picker in Account settings.", "Improved local data encryption stability."] },
+  { version: "v1.4.3", date: "May 8, 2026", title: "Onboarding & Personas", changes: ["Refined onboarding flow for new users.", "Added premium Persona picker in Account settings.", "Improved local data storage reliability."] },
   { version: "v1.4.1", date: "May 8, 2026", title: "UI Polish", changes: ["Decoupled toast notifications from modals.", "Generalized sale entry labels for craft businesses.", "Fixed layout issues on narrow screens."] },
   { version: "v1.4.0", date: "May 7, 2026", title: "Performance & Security", changes: ["Hardened security logic for PIN lock.", "Optimized PWA installation prompts.", "Audit and fix for critical runtime crashes."] },
   { version: "v1.3.0", date: "Apr 28, 2026", title: "Dark Mode & Charts", changes: ["Full Dark Mode support implemented.", "Enhanced Analytics with interactive Recharts.", "Improved profit margin visualizations."] },
@@ -33,41 +51,59 @@ const UPDATE_LOG = [
 ];
 
 /* ─── HELPERS ──────────────────────────────────────────────────────────────── */
-const fmt = (n) => {
-  const activeCurrency = useStore.getState().currency || "XAF";
-  return new Intl.NumberFormat("en-US", {
-    style: 'currency',
-    currency: activeCurrency,
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0
-  }).format(Math.round(n));
-};
+// Amounts are integers in a currency's minor unit. Business-scoped call sites
+// pass that business's currency; portfolio-level totals fall back to the
+// account default.
+const fmt = (minor, currency) => formatMoney(minor, currency || useStore.getState().currency);
 
-const calcBizStats = (biz) => {
-  const revenue = biz.sales.reduce((s, sale) => s + sale.revenue, 0);
-  const cogs = biz.sales.reduce((s, sale) => s + sale.cost, 0);
-  const profit = revenue - cogs;
-  const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(0) : 0;
-  return { revenue, cogs, profit, margin };
-};
-const getStatus = (margin) => {
-  if (margin >= 30) return "profitable";
-  if (margin >= 10) return "break-even";
-  return "losing";
-};
 const STATUS_STYLE = {
   profitable: { bg: "#E8F5E3", text: "#3A7D2C", label: "Profitable" },
   "break-even": { bg: "#FFF8E1", text: "#8B6914", label: "Break Even" },
   losing: { bg: "#FDECEA", text: "#C0392B", label: "Losing" },
 };
-const dateLabel = (d) => {
+
+const dateLabel = (occurredAt) => {
+  const d = String(occurredAt || "").slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   if (d === today) return "Today";
   if (d === yesterday) return "Yesterday";
   return d;
 };
-const uid = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+const num = (v, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const downloadJson = (data, filename) => {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+/** Hands back the verbatim pre-upgrade copy of the user's data. */
+const downloadSnapshot = () => {
+  const snapshot = readSnapshot();
+  if (!snapshot) {
+    alert("No pre-upgrade backup was found on this device.");
+    return false;
+  }
+  downloadJson(snapshot, `BizTrack_PreUpgrade_Backup_${String(snapshot.savedAt).slice(0, 10)}.json`);
+  return true;
+};
+
+/** Per-unit profit and margin for an inventory item, guarding zero prices. */
+const itemEconomics = (item) => ({
+  profit: item.unitPrice - item.avgCost,
+  margin: marginPercent(item.unitPrice, item.avgCost),
+});
 
 /* ─── SECURITY HELPERS ─────────────────────────────────────────────────────── */
 const hashPin = async (pin) => {
@@ -117,6 +153,11 @@ const sendResetEmail = async (email, name, code) => {
     return true; 
   }
   
+  if (!window.emailjs) {
+    alert("Email recovery needs an internet connection. Use your 8-character Recovery Key instead.");
+    return false;
+  }
+
   try {
     const res = await window.emailjs.send(
       EMAILJS_CONFIG.SERVICE_ID,
@@ -206,8 +247,29 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt }) {
 }
 
 /* ─── DATA RESCUE UTILITY ─────────────────────────────────────────────────── */
+// Single source of truth lives in the store.
+const CURRENT_STORAGE_KEY = STORAGE_KEY;
+const LEGACY_STORAGE_KEYS = ['biztrack-storage-v4', 'biztrack-storage-v2', 'biztrack-storage'];
+
 function useRescueData(hydrated) {
   const [isRescuing, setIsRescuing] = useState(false);
+
+  /**
+   * Adopt a recovered blob.
+   *
+   * Rescued data is nearly always in the pre-ledger shape, so it MUST go
+   * through the same migration as everything else. Writing it into the store
+   * as-is leaves `items` and `unitPrice` undefined, and the app renders every
+   * business with no inventory and zero revenue -- indistinguishable from total
+   * data loss, triggered by the one button a panicking user would press.
+   */
+  const adoptRescuedState = (state) => {
+    const migrated = migrateState(state);
+    const report = verifyMigration(state?.businesses, migrated.businesses);
+    if (!report.ok) console.error("[BizTrack] Rescue check found discrepancies:", report.issues);
+    useStore.setState({ ...migrated, onboardingComplete: true });
+    return migrated.businesses.length;
+  };
 
   const checkRescue = async (manual = false) => {
     const current = useStore.getState();
@@ -216,8 +278,10 @@ function useRescueData(hydrated) {
     if (manual) setIsRescuing(true);
     console.log("[BizTrack] Running Emergency Data Rescue...");
 
-    // 1. Check LocalStorage
-    const keys = ['biztrack-storage-v4', 'biztrack-storage-v3'];
+    // 1. Check LocalStorage. The automatic pass only looks at LEGACY keys --
+    // scanning the live key would resurrect data the user just signed out of.
+    // A manual rescue (user tapped the button) may scan the live key too.
+    const keys = manual ? [...LEGACY_STORAGE_KEYS, CURRENT_STORAGE_KEY] : LEGACY_STORAGE_KEYS;
     for (const key of keys) {
       try {
         const raw = localStorage.getItem(key);
@@ -226,13 +290,13 @@ function useRescueData(hydrated) {
           const state = data.state;
           if (state && state.businesses?.length > 0) {
             console.log(`[BizTrack] Found data in LS: ${key}`);
-            useStore.setState({ ...state, onboardingComplete: true });
-            if (manual) alert("Data found and restored!");
+            const count = adoptRescuedState(state);
+            if (manual) alert(`Data found and restored: ${count} business${count === 1 ? "" : "es"}.`);
             setIsRescuing(false);
             return true;
           }
         }
-      } catch(e) {}
+      } catch { /* key unreadable, try the next one */ }
     }
 
     // 2. Check Raw IndexedDB
@@ -252,7 +316,7 @@ function useRescueData(hydrated) {
           const store = transaction.objectStore('keyval');
           let found = false;
 
-          ['biztrack-storage-v3', 'biztrack-storage-v4'].forEach(key => {
+          (manual ? [...LEGACY_STORAGE_KEYS, CURRENT_STORAGE_KEY] : LEGACY_STORAGE_KEYS).forEach(key => {
             const getReq = store.get(key);
             getReq.onsuccess = () => {
               const raw = getReq.result;
@@ -262,14 +326,13 @@ function useRescueData(hydrated) {
                   const state = data.state;
                   if (state && state.businesses?.length > 0) {
                     console.log(`[BizTrack] Found data in IDB: ${key}`);
-                    useStore.setState({ ...state, onboardingComplete: true });
-                    localStorage.setItem('biztrack-storage-v3', raw);
+                    const count = adoptRescuedState(state);
                     found = true;
-                    if (manual) alert("Data found and restored from IndexedDB!");
+                    if (manual) alert(`Data found and restored from IndexedDB: ${count} business${count === 1 ? "" : "es"}.`);
                     setIsRescuing(false);
                     resolve(true);
                   }
-                } catch(err) {}
+                } catch { /* not valid JSON, skip */ }
               }
             };
           });
@@ -282,7 +345,7 @@ function useRescueData(hydrated) {
             }
           };
         };
-      } catch(err) {
+      } catch {
         setIsRescuing(false);
         resolve(false);
       }
@@ -315,6 +378,26 @@ export default function BizTrack() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Session lives in React, not the persisted store: supabase-js already owns
+  // session storage and refresh, and duplicating it is how you end up showing
+  // someone as signed in against a token that expired days ago.
+  const auth = useAuth();
+  const [analyticsConsent, setAnalyticsConsentState] = useState(() => getConsent());
+  const claim = useClaim(auth.userId);
+  // Held until the user has said what should happen to books already on this
+  // device. Pushing first and asking afterwards would make the question moot.
+  const sync = useSync(auth.userId, { paused: claim.needed || claim.checking });
+
+  useEffect(() => {
+    setAppVersion(VERSION);
+    startAnalytics();
+    installErrorCapture();
+  }, []);
+
+  // Chosen explicitly by the user on the sign-in screen; not persisted, so the
+  // choice is re-offered next launch rather than silently stranding them local.
+  const [skippedAuth, setSkippedAuth] = useState(false);
   
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -322,6 +405,7 @@ export default function BizTrack() {
       setDeferredPrompt(e);
       console.log("Install prompt captured!");
     };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
@@ -401,14 +485,26 @@ export default function BizTrack() {
     };
   }, []);
 
-  const businesses = useStore(s => s.businesses);
-  const setBusinesses = useStore(s => s.setBusinesses);
+  const storedBusinesses = useStore(s => s.businesses);
+  const migrationFailed = useStore(s => s.migrationFailed);
+  const migrationIssues = useStore(s => s.migrationIssues);
+  const replaceBusinesses = useStore(s => s.replaceBusinesses);
+  const storeAddBusiness = useStore(s => s.addBusiness);
+  const storeDeleteBusiness = useStore(s => s.deleteBusiness);
+  const storeAddItem = useStore(s => s.addItem);
+  const storeDeleteItem = useStore(s => s.deleteItem);
+  const storeRestockItem = useStore(s => s.restockItem);
+  const storeRecordSale = useStore(s => s.recordSale);
 
-  // Safety Catch for Corrupted State
-  if (!businesses || !Array.isArray(businesses)) {
-    console.error("State Corruption Detected! Attempting recovery...");
-    return <div style={{ background: "#2C1810", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>Loading...</div>;
-  }
+  // Safety catch for corrupted state. We must NOT early-return here -- dozens of
+  // hooks follow, and bailing before them violates the rules of hooks and throws
+  // on the next render. Instead fall back to an empty array so every hook below
+  // still runs, and render the recovery screen after they have.
+  const isStateCorrupt = !Array.isArray(storedBusinesses);
+  // Soft-deleted records stay in the store so their tombstones can sync one day;
+  // everything the UI touches goes through the live view.
+  const businesses = isStateCorrupt ? [] : selectBusinesses({ businesses: storedBusinesses });
+  if (isStateCorrupt) console.error("State Corruption Detected! Showing recovery screen.");
 
   const currency = useStore(s => s.currency);
   const setCurrency = useStore(s => s.setCurrency);
@@ -416,6 +512,10 @@ export default function BizTrack() {
   const setLowStockThreshold = useStore(s => s.setLowStockThreshold);
 
   const [screen, setScreen] = useState("home");
+
+  // Screen views. `screen` is the only dependency: this records navigation,
+  // not re-renders.
+  useEffect(() => { track("screen.view", { screen }); }, [screen]);
   const [activeBizId, setActiveBizId] = useState(null);
   const [bizTab, setBizTab] = useState("overview");
   const [modal, setModal] = useState(null); // null | "addBiz" | "addItem" | "restock" | "addSale" | "editBiz" | "deleteBiz" | "toast"
@@ -450,105 +550,81 @@ export default function BizTrack() {
   const openBiz = (id) => { setActiveBizId(id); setBizTab("overview"); setScreen("business"); };
 
   const addBusiness = (data) => {
-    setBusinesses([...businesses, { ...data, id: uid(), inventory: [], sales: [] }]);
+    storeAddBusiness(data);
+    track("business.add", { count: businesses.length + 1 });
     showToast("Business added!");
   };
 
   const deleteBusiness = (id) => {
-    setBusinesses(businesses.filter((b) => b.id !== id));
+    storeDeleteBusiness(id);
+    track("business.delete");
     setModal(null);
     setActiveBizId(null);
     setScreen("home");
     showToast("Business deleted.");
   };
 
+  // Quantity and cost are recorded as an opening ledger entry rather than as
+  // fields on the item, so later restocks at different prices can't rewrite them.
   const addInventoryItem = (bizId, item) => {
-    setBusinesses(businesses.map((b) =>
-      b.id === bizId ? { ...b, inventory: [...b.inventory, { ...item, id: uid(), sold: 0 }] } : b
-    ));
+    storeAddItem(bizId, item);
+    track("item.add");
     showToast("Item added to inventory!");
   };
 
-  const restockInventoryItem = (bizId, itemId, addQty, newCost) => {
-    setBusinesses(businesses.map((b) =>
-      b.id === bizId ? {
-        ...b,
-        inventory: b.inventory.map((i) =>
-          i.id === itemId ? {
-            ...i,
-            qty: i.qty + addQty,
-            cost: newCost !== null ? newCost : i.cost, // update cost if supplier price changed
-          } : i
-        )
-      } : b
-    ));
+  const restockInventoryItem = (bizId, itemId, addQty, newUnitCost) => {
+    const item = activeBiz ? selectInventory({ businesses }, bizId).find((i) => i.id === itemId) : null;
+    storeRestockItem(bizId, itemId, {
+      qty: addQty,
+      // Blank means "same price as before", which for a weighted average is the
+      // current average -- it leaves the average untouched.
+      unitCost: newUnitCost === null || newUnitCost === undefined ? (item?.avgCost ?? 0) : newUnitCost,
+    });
+    track("item.restock", { ok: newUnitCost !== null && newUnitCost !== undefined });
     showToast("Stock topped up!");
   };
 
   const deleteInventoryItem = (bizId, itemId) => {
-    setBusinesses(businesses.map((b) =>
-      b.id === bizId ? { ...b, inventory: b.inventory.filter((i) => i.id !== itemId) } : b
-    ));
+    storeDeleteItem(bizId, itemId);
+    track("item.delete");
     showToast("Item removed.");
   };
 
   const addSale = (bizId, sale) => {
-    const biz = businesses.find(b => b.id === bizId);
-    if (!biz) return;
-
-    let newSale;
-    let newInventory = biz.inventory;
-
-    if (sale.isCustom) {
-      newSale = {
-        id: uid(),
-        itemName: sale.manualName,
-        qty: Number(sale.qty) || 1,
-        askingPrice: Number(sale.actualPrice),
-        actualPrice: Number(sale.actualPrice),
-        revenue: Number(sale.actualPrice) * (Number(sale.qty) || 1),
-        cost: Number(sale.manualCost) * (Number(sale.qty) || 1),
-        discount: 0,
-        date: new Date().toISOString().slice(0, 10),
-        note: sale.note,
-        isCustom: true
-      };
-    } else {
-      const item = biz.inventory.find(i => String(i.id) === String(sale.itemId));
-      if (!item || item.qty < sale.qty) {
-        showToast(`Not enough stock for ${item?.name || "item"}`);
-        return;
-      }
-      newSale = {
-        id: uid(),
-        itemName: item.name,
-        qty: sale.qty,
-        askingPrice: item.price,
-        actualPrice: sale.actualPrice,
-        revenue: sale.actualPrice * sale.qty,
-        cost: item.cost * sale.qty,
-        discount: item.price !== sale.actualPrice ? (item.price - sale.actualPrice) * sale.qty : 0,
-        date: new Date().toISOString().slice(0, 10),
-        note: sale.note,
-      };
-      newInventory = biz.inventory.map((i) =>
-        i.id === sale.itemId || String(i.id) === String(sale.itemId) ? { ...i, qty: i.qty - sale.qty, sold: i.sold + sale.qty } : i
-      );
-    }
-
-    setBusinesses(businesses.map((b) => {
-      if (b.id !== bizId) return b;
-      return { ...b, sales: [newSale, ...b.sales], inventory: newInventory };
-    }));
+    const { item } = storeRecordSale(bizId, sale);
+    // `kind` separates inventoried sales from one-off custom work, which is
+    // the split worth knowing. Neither carries what was sold or for how much.
+    track("sale.record", { kind: sale?.isCustom ? "custom" : "item" });
     showToast("Sale recorded!");
 
-    // Low-stock notification
-    if (!sale.isCustom) {
-      const item = newInventory.find(i => String(i.id) === String(sale.itemId));
-      if (item && item.qty > 0 && item.qty <= lowStockThreshold) {
-        sendLowStockNotification(item.name, item.qty, biz.name);
-      }
+    if (!item) return;
+    if (hasStockDiscrepancy(item)) {
+      // The sale is kept -- it happened. Surface the mismatch to reconcile.
+      track("stock.oversold");
+      showToast(`${item.name} is oversold by ${Math.abs(item.qty)}. Check your stock.`);
+      return;
     }
+    if (item.qty > 0 && item.qty <= lowStockThreshold) {
+      const biz = businesses.find((b) => b.id === bizId);
+      sendLowStockNotification(item.name, item.qty, biz?.name || "your business");
+    }
+  };
+
+  const resetSyncCursors = useStore(s => s.resetSyncCursors);
+
+  /**
+   * Sign out.
+   *
+   * Cursors MUST be cleared: they are per-account watermarks, and the next
+   * person to sign in on this device would otherwise conclude they had already
+   * pulled everything and see an empty account. Local records are deliberately
+   * left alone -- they may not be backed up yet, and deleting someone's books
+   * as a side effect of signing out is unforgivable.
+   */
+  const signOutOfAccount = async () => {
+    await signOut();
+    resetSyncCursors();
+    showToast("Signed out. Your records stay on this device.");
   };
 
   const onboardingComplete = useStore(s => s.onboardingComplete);
@@ -572,12 +648,134 @@ export default function BizTrack() {
   const hashedRecoveryKey = useStore(s => s.hashedRecoveryKey);
   const setHashedRecoveryKey = useStore(s => s.setHashedRecoveryKey);
 
-  const ctx = { businesses, setBusinesses, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const chooseAnalytics = (allowed) => {
+    setConsent(allowed);
+    setAnalyticsConsentState(allowed);
+    // Only meaningful when allowed; track() is a no-op otherwise.
+    track("analytics.consent", { ok: allowed, first_run: true });
+    if (allowed) flushAnalytics();
+  };
+
+  const startSignIn = () => setSkippedAuth(false);
+
+  const ctx = { businesses, analyticsConsent, chooseAnalytics, startSignIn, replaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, bizTab, setBizTab, modal, setModal, showToast, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, deleteInventoryItem, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
+  // Safe to early-return from here on: every hook above has already run.
+  if (isStateCorrupt || migrationFailed) {
+    return (
+      <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
+        <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", alignItems: "center", padding: 40, textAlign: "center" }}>
+          <AlertTriangle size={48} color="#F0C040" style={{ marginBottom: 20 }} />
+          <h2 style={{ ...S.userName, color: "#FAF8F4", marginBottom: 8 }}>We couldn't open your records</h2>
+          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
+            <strong>Nothing has been deleted.</strong> Your data is still on this device.
+          </p>
+          <p style={{ ...S.greeting, color: "rgba(255,255,255,0.5)", fontSize: 12, marginBottom: 32 }}>
+            Download a copy first, then try a rescue scan. Please don't clear the app or reinstall it.
+          </p>
+          <button style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810" }} onClick={downloadSnapshot}>
+            Download my data
+          </button>
+          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => checkRescue(true)}>
+            {isRescuing ? "Scanning device..." : "Try Data Rescue"}
+          </button>
+          <button style={{ ...S.ghostBtn, marginTop: 12 }} onClick={() => window.location.reload()}>Reload App</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Wait for the session check before rendering anything, so an already
+  // signed-in user never sees a flash of the sign-in screen.
+  if (isBackendConfigured && !auth.ready) {
+    return <div style={{ ...S.shell, background: "#2C1810" }} />;
+  }
+
+  if (isBackendConfigured && !auth.session && !skippedAuth) {
+    return (
+      <AuthScreen
+        styles={S}
+        hasLocalData={businesses.length > 0}
+        onSkip={() => setSkippedAuth(true)}
+      />
+    );
+  }
+
+  if (claim.needed) {
+    return (
+      <ClaimScreen
+        styles={S}
+        local={claim.local}
+        remote={claim.remote}
+        businesses={businesses}
+        onResolve={(strategy) => {
+          const result = claim.resolve(strategy);
+          if (result.ok) {
+            track("claim.resolve", { kind: strategy });
+            // Sync unpauses on the next render and does the actual work.
+            showToast(strategy === "adopt"
+              ? "Loading your account's books…"
+              : "Backing up your books…");
+          }
+          return result;
+        }}
+      />
+    );
+  }
+
   if (!onboardingComplete) return <Onboarding ctx={ctx} deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />;
   if (isPinEnabled && !isUnlocked) return <PinLock ctx={ctx} onUnlock={() => setIsUnlocked(true)} />;
+
+  // Analytics consent. Nothing is collected until this is answered, so the
+  // prompt is a gate on collection rather than a notice about it.
+  if (isBackendConfigured && analyticsConsent === null) {
+    return (
+      <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
+        <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }}>
+          <div style={{ background: "rgba(255,255,255,0.08)", width: 62, height: 62, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+            <TrendingUp size={30} color="#FAF8F4" />
+          </div>
+          <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 24, marginBottom: 10 }}>
+            Help us fix what breaks
+          </h1>
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: "rgba(255,255,255,0.75)", margin: "0 0 14px" }}>
+            BizTrack is in beta. If you allow it, the app will tell us which screens you
+            open, which features you use, and when something crashes — so we fix the
+            right things.
+          </p>
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: "rgba(255,255,255,0.55)", margin: "0 0 6px" }}>
+            <strong style={{ color: "rgba(255,255,255,0.8)" }}>We never send your business data.</strong> No item
+            names, no prices, no sales figures, no customer details. Only which parts of
+            the app were used.
+          </p>
+          <p style={{ fontSize: 13, lineHeight: 1.6, color: "rgba(255,255,255,0.55)", margin: "0 0 22px" }}>
+            You can change this any time in Settings.
+          </p>
+
+          <button
+            style={{ ...S.primaryBtn, background: "#FAF8F4", color: "#2C1810", marginTop: 0 }}
+            onClick={() => chooseAnalytics(true)}
+          >
+            Allow
+          </button>
+          <button
+            style={{ ...S.primaryBtn, background: "transparent", color: "#FAF8F4", border: "1px solid rgba(255,255,255,0.25)", marginTop: 10 }}
+            onClick={() => chooseAnalytics(false)}
+          >
+            No thanks
+          </button>
+          <button
+            style={{ ...S.textBtn, color: "rgba(255,255,255,0.5)", fontSize: 12, marginTop: 16 }}
+            onClick={() => setScreen("privacy")}
+          >
+            Read the Privacy Policy
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={S.shell}>
@@ -589,6 +787,8 @@ export default function BizTrack() {
           {screen === "analytics" && <AnalyticsScreen ctx={ctx} />}
           {screen === "account" && <AccountScreen ctx={ctx} />}
           {screen === "about" && <AboutScreen ctx={ctx} />}
+          {screen === "privacy" && <LegalScreen styles={S} doc={DOCUMENTS.privacy} onBack={() => setScreen("settings")} />}
+          {screen === "terms" && <LegalScreen styles={S} doc={DOCUMENTS.terms} onBack={() => setScreen("settings")} />}
         </div>
         <InstallPrompt deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />
         <BottomNav ctx={ctx} />
@@ -657,11 +857,12 @@ export default function BizTrack() {
 
 /* ─── HOME SCREEN ───────────────────────────────────────────────────────────── */
 function HomeScreen({ ctx }) {
-  const { businesses, openBiz, setModal, lowStockThreshold, userName, setScreen, userAvatar } = ctx;
-  const totalRevenue = businesses.reduce((s, b) => s + calcBizStats(b).revenue, 0);
-  const totalProfit = businesses.reduce((s, b) => s + calcBizStats(b).profit, 0);
+  const { businesses, openBiz, setModal, lowStockThreshold, userName, setScreen, userAvatar, migrationIssues } = ctx;
+  const totals = calcPortfolioStats(businesses);
   const allLowStock = businesses.flatMap((b) =>
-    b.inventory.filter((i) => i.qty <= lowStockThreshold).map((i) => ({ ...i, bizName: b.name, bizColor: b.color }))
+    deriveInventory(b)
+      .filter((i) => !i.deletedAt && i.qty <= lowStockThreshold)
+      .map((i) => ({ ...i, bizName: b.name, bizColor: b.color }))
   );
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -680,11 +881,11 @@ function HomeScreen({ ctx }) {
       <div id="home-summary" style={S.summaryCard}>
         <div style={S.summaryOrb} />
         <p style={S.summaryLabel}>Total Profit This Month</p>
-        <h2 style={S.summaryAmount}>{fmt(totalProfit)}</h2>
+        <h2 style={S.summaryAmount}>{fmt(totals.profit)}</h2>
         <div style={S.summaryRow}>
           <div>
             <p style={S.summarySubLabel}>Revenue</p>
-            <p style={S.summarySubVal}>{fmt(totalRevenue)}</p>
+            <p style={S.summarySubVal}>{fmt(totals.revenue)}</p>
           </div>
           <div style={S.summaryDivider} />
           <div>
@@ -694,10 +895,29 @@ function HomeScreen({ ctx }) {
           <div style={S.summaryDivider} />
           <div>
             <p style={S.summarySubLabel}>Margin</p>
-            <p style={S.summarySubVal}>{totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(0) : 0}%</p>
+            <p style={S.summarySubVal}>{totals.margin}%</p>
           </div>
         </div>
       </div>
+
+      {/* The upgrade completed but the numbers didn't reconcile. Say so plainly
+          and put the untouched original one tap away. */}
+      {migrationIssues?.length > 0 && (
+        <div style={{ ...S.alertBanner, background: "#FDECEA", border: "1px solid #C0392B" }}>
+          <AlertTriangle style={S.alertIcon} size={18} color="#C0392B" />
+          <div style={{ flex: 1 }}>
+            <p style={{ ...S.alertTitle, color: "#C0392B" }}>Please check your numbers</p>
+            <p style={S.alertSub}>
+              Some totals changed during the last app update. Nothing was deleted, and a copy of
+              your original data is saved on this device.
+            </p>
+            <button
+              style={{ ...S.textBtn, color: "#C0392B", marginTop: 8 }}
+              onClick={downloadSnapshot}
+            >Download original data</button>
+          </div>
+        </div>
+      )}
 
       {/* LOW STOCK BANNER */}
       {allLowStock.length > 0 && (
@@ -726,19 +946,18 @@ function HomeScreen({ ctx }) {
         )}
         {businesses.map((biz) => {
           const stats = calcBizStats(biz);
-          const status = getStatus(Number(stats.margin));
-          const ss = STATUS_STYLE[status];
+          const ss = STATUS_STYLE[getStatus(stats.margin)];
           return (
             <div key={biz.id} style={{ ...S.bizCard, borderLeftColor: biz.color }} onClick={() => openBiz(biz.id)}>
               <div style={S.bizCardLeft}>
                 <div style={{ ...S.bizEmoji, background: biz.color + "22" }}>{biz.emoji}</div>
                 <div>
                   <p style={S.bizName}>{biz.name}</p>
-                  <p style={S.bizCat}>{biz.category} · {biz.inventory.length} items</p>
+                  <p style={S.bizCat}>{biz.category} · {biz.items.filter((i) => !i.deletedAt).length} items</p>
                 </div>
               </div>
               <div style={S.bizCardRight}>
-                <p style={S.bizProfit}>{fmt(stats.profit)}</p>
+                <p style={S.bizProfit}>{fmt(stats.profit, biz.currency)}</p>
                 <span style={{ ...S.badge, background: ss.bg, color: ss.text }}>{ss.label}</span>
               </div>
             </div>
@@ -755,6 +974,8 @@ function HomeScreen({ ctx }) {
 function BusinessScreen({ ctx }) {
   const { activeBiz, bizTab, setBizTab, setScreen, setModal, deleteInventoryItem, lowStockThreshold, setRestockItemId } = ctx;
   const stats = calcBizStats(activeBiz);
+  // Quantity and average cost are folded from the stock ledger on read.
+  const inventory = deriveInventory(activeBiz).filter((i) => !i.deletedAt);
 
   return (
     <div style={S.screen}>
@@ -773,11 +994,11 @@ function BusinessScreen({ ctx }) {
         <div style={S.heroRow}>
           <div>
             <p style={S.heroLabel}>Revenue</p>
-            <p style={S.heroVal}>{fmt(stats.revenue)}</p>
+            <p style={S.heroVal}>{fmt(stats.revenue, activeBiz.currency)}</p>
           </div>
           <div>
             <p style={S.heroLabel}>Profit</p>
-            <p style={S.heroVal}>{fmt(stats.profit)}</p>
+            <p style={S.heroVal}>{fmt(stats.profit, activeBiz.currency)}</p>
           </div>
           <div>
             <p style={S.heroLabel}>Margin</p>
@@ -800,25 +1021,35 @@ function BusinessScreen({ ctx }) {
       </div>
 
       <div style={S.tabContent}>
-        {bizTab === "overview" && <OverviewTab biz={activeBiz} stats={stats} lowStockThreshold={lowStockThreshold} setModal={setModal} />}
-        {bizTab === "inventory" && <InventoryTab biz={activeBiz} setModal={setModal} deleteInventoryItem={deleteInventoryItem} setRestockItemId={setRestockItemId} />}
+        {bizTab === "overview" && <OverviewTab biz={activeBiz} stats={stats} lowStockThreshold={lowStockThreshold} inventory={inventory} />}
+        {bizTab === "inventory" && <InventoryTab biz={activeBiz} setModal={setModal} deleteInventoryItem={deleteInventoryItem} setRestockItemId={setRestockItemId} lowStockThreshold={lowStockThreshold} inventory={inventory} />}
         {bizTab === "sales" && <SalesTab biz={activeBiz} setModal={setModal} />}
       </div>
     </div>
   );
 }
 
-function OverviewTab({ biz, stats, lowStockThreshold, setModal }) {
-  const best = [...biz.inventory].sort((a, b) => b.sold - a.sold)[0];
-  const lowStock = biz.inventory.filter((i) => i.qty <= lowStockThreshold);
+function OverviewTab({ biz, stats, lowStockThreshold, inventory }) {
+  const cur = biz.currency;
+  const best = [...inventory].sort((a, b) => b.sold - a.sold)[0];
+  const lowStock = inventory.filter((i) => i.qty > 0 && i.qty <= lowStockThreshold);
+  const oversold = inventory.filter(hasStockDiscrepancy);
   const recentSales = biz.sales.slice(0, 3);
   return (
     <div style={S.tabInner}>
-      {best && (
+      {oversold.length > 0 && (
+        <div style={{ ...S.infoCard, borderLeftColor: "#C0392B" }}>
+          <p style={{...S.infoLabel, display:"flex", alignItems:"center", gap:6, color:"#C0392B"}}><AlertTriangle size={14} color="#C0392B"/> Stock Discrepancy</p>
+          {oversold.map((i) => (
+            <p key={i.id} style={S.infoSub}>{i.name} — {Math.abs(i.qty)} more sold than recorded as bought. Restock to correct.</p>
+          ))}
+        </div>
+      )}
+      {best && best.sold > 0 && (
         <div style={S.infoCard}>
           <p style={{...S.infoLabel, display:"flex", alignItems:"center", gap:6}}><Award size={14} color="#8B6914"/> Best Seller</p>
           <p style={S.infoVal}>{best.name}</p>
-          <p style={S.infoSub}>{best.sold} units sold · {fmt(best.price)} each · {(((best.price - best.cost) / best.price) * 100).toFixed(0)}% margin</p>
+          <p style={S.infoSub}>{best.sold} units sold · {fmt(best.unitPrice, cur)} each · {itemEconomics(best).margin}% margin</p>
         </div>
       )}
       {lowStock.length > 0 && (
@@ -832,36 +1063,37 @@ function OverviewTab({ biz, stats, lowStockThreshold, setModal }) {
       <div style={S.statsGrid}>
         <div style={S.statCard}>
           <p style={S.statLbl}>Total Sales</p>
-          <p style={S.statVal}>{biz.sales.length}</p>
+          <p style={S.statVal}>{stats.salesCount}</p>
         </div>
         <div style={S.statCard}>
           <p style={S.statLbl}>Units Sold</p>
-          <p style={S.statVal}>{biz.inventory.reduce((s, i) => s + i.sold, 0)}</p>
+          {/* From the sales list, so one-off custom sales are counted too. */}
+          <p style={S.statVal}>{stats.unitsSold}</p>
         </div>
         <div style={S.statCard}>
           <p style={S.statLbl}>Revenue</p>
-          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.revenue)}</p>
+          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.revenue, cur)}</p>
         </div>
         <div style={S.statCard}>
           <p style={S.statLbl}>COGS</p>
-          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.cogs)}</p>
+          <p style={{ ...S.statVal, fontSize: 13 }}>{fmt(stats.cogs, cur)}</p>
         </div>
       </div>
       {recentSales.length > 0 && (
         <>
           <p style={S.sectionLabel}>Recent Sales</p>
-          {recentSales.map((s) => (
-            <div key={s.id} style={S.saleRow}>
+          {recentSales.map((sale) => (
+            <div key={sale.id} style={S.saleRow}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <p style={S.saleName}>{s.itemName}</p>
-                  {s.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
+                  <p style={S.saleName}>{sale.itemName}</p>
+                  {sale.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
                 </div>
-                <p style={S.saleSub}>{s.qty} {s.qty > 1 ? "units" : "unit"} · {dateLabel(s.date)}</p>
+                <p style={S.saleSub}>{sale.qty} {sale.qty > 1 ? "units" : "unit"} · {dateLabel(sale.occurredAt)}</p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <p style={S.saleRev}>{fmt(s.revenue)}</p>
-                <p style={S.salePft}>+{fmt(s.revenue - s.cost)}</p>
+                <p style={S.saleRev}>{fmt(saleRevenue(sale), cur)}</p>
+                <p style={S.salePft}>+{fmt(saleProfit(sale), cur)}</p>
               </div>
             </div>
           ))}
@@ -872,39 +1104,48 @@ function OverviewTab({ biz, stats, lowStockThreshold, setModal }) {
   );
 }
 
-function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId }) {
+function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId, lowStockThreshold, inventory }) {
+  const cur = biz.currency;
   return (
     <div style={S.tabInner}>
       <button style={S.dashedBtn} onClick={() => setModal("addItem")}>+ Add New Item</button>
-      {biz.inventory.length === 0 && (
+      {inventory.length === 0 && (
         <div style={S.emptyState}>
           <div style={S.emptyIcon}><Package size={40} color="#2C1810" strokeWidth={1.5} /></div>
           <p style={S.emptyTitle}>No items yet</p>
           <p style={S.emptySub}>Add your first product above</p>
         </div>
       )}
-      {biz.inventory.map((item) => {
-        const margin = (((item.price - item.cost) / item.price) * 100).toFixed(0);
-        const profit = item.price - item.cost;
+      {inventory.map((item) => {
+        const { profit, margin } = itemEconomics(item);
         return (
           <div key={item.id} style={S.invRow}>
             <div style={{ flex: 1 }}>
               <div style={S.invNameRow}>
                 <p style={S.invName}>{item.name}</p>
-                {item.qty <= 3 && <span style={S.lowBadge}>Low</span>}
+                {hasStockDiscrepancy(item)
+                  ? <span style={{ ...S.lowBadge, background: "#C0392B", color: "#FFF" }}>Oversold</span>
+                  : item.qty <= lowStockThreshold && <span style={S.lowBadge}>Low</span>}
               </div>
-              <p style={S.invSub}>Cost: {fmt(item.cost)} · Asking: {fmt(item.price)}</p>
+              {/* Average cost across every batch bought, not just the latest price. */}
+              <p style={S.invSub}>Avg cost: {fmt(item.avgCost, cur)} · Asking: {fmt(item.unitPrice, cur)}</p>
               <p style={S.invSub}>{item.qty} in stock · {item.sold} sold</p>
-              {/* RESTOCK BUTTON */}
               <button
                 style={S.restockBtn}
                 onClick={() => { setRestockItemId(item.id); setModal("restock"); }}
               >+ Restock</button>
             </div>
             <div style={{ alignItems: "flex-end", display: "flex", flexDirection: "column", gap: 6 }}>
-              <p style={S.invProfit}>+{fmt(profit)}/unit</p>
+              <p style={S.invProfit}>+{fmt(profit, cur)}/unit</p>
               <span style={S.marginBadge}>{margin}%</span>
-              <button style={S.deleteBtn} onClick={() => deleteInventoryItem(biz.id, item.id)}>✕</button>
+              <button
+                style={S.deleteBtn}
+                onClick={() => {
+                  if (confirm(`Remove "${item.name}" from inventory? Its sales history is kept.`)) {
+                    deleteInventoryItem(biz.id, item.id);
+                  }
+                }}
+              >✕</button>
             </div>
           </div>
         );
@@ -915,15 +1156,15 @@ function InventoryTab({ biz, setModal, deleteInventoryItem, setRestockItemId }) 
 }
 
 function SalesTab({ biz, setModal }) {
-  const totalRev = biz.sales.reduce((s, x) => s + x.revenue, 0);
-  const totalPft = biz.sales.reduce((s, x) => s + (x.revenue - x.cost), 0);
+  const cur = biz.currency;
+  const stats = calcBizStats(biz);
   return (
     <div style={S.tabInner}>
       <button style={S.dashedBtn} onClick={() => setModal("addSale")}>+ Record New Sale</button>
       {biz.sales.length > 0 && (
         <div style={{ ...S.infoCard, background: "#F0FAF0" }}>
           <p style={S.infoLabel}>All Time</p>
-          <p style={S.infoSub}>Revenue: {fmt(totalRev)} · Profit: {fmt(totalPft)}</p>
+          <p style={S.infoSub}>Revenue: {fmt(stats.revenue, cur)} · Profit: {fmt(stats.profit, cur)}</p>
         </div>
       )}
       {biz.sales.length === 0 && (
@@ -940,11 +1181,11 @@ function SalesTab({ biz, setModal }) {
               <p style={S.saleName}>{sale.itemName}</p>
               {sale.isCustom && <span style={{ fontSize: 9, fontWeight: 800, color: "#8B6914", background: "#F5F0EA", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Custom ✨</span>}
             </div>
-            <p style={S.saleSub}>{sale.qty} {sale.qty > 1 ? "units" : "unit"} · {dateLabel(sale.date)}{sale.note ? ` · ${sale.note}` : ""}</p>
+            <p style={S.saleSub}>{sale.qty} {sale.qty > 1 ? "units" : "unit"} · {dateLabel(sale.occurredAt)}{sale.note ? ` · ${sale.note}` : ""}</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={S.saleRev}>{fmt(sale.revenue)}</p>
-            <p style={S.salePft}>+{fmt(sale.revenue - sale.cost)}</p>
+            <p style={S.saleRev}>{fmt(saleRevenue(sale), cur)}</p>
+            <p style={S.salePft}>+{fmt(saleProfit(sale), cur)}</p>
           </div>
         </div>
       ))}
@@ -957,8 +1198,7 @@ function SalesTab({ biz, setModal }) {
 function AnalyticsScreen({ ctx }) {
   const { businesses, setScreen } = ctx;
   const sorted = [...businesses].map((b) => ({ ...b, stats: calcBizStats(b) })).sort((a, b) => b.stats.profit - a.stats.profit);
-  const totalRev = sorted.reduce((s, b) => s + b.stats.revenue, 0);
-  const totalPft = sorted.reduce((s, b) => s + b.stats.profit, 0);
+  const totals = calcPortfolioStats(businesses);
   const maxProfit = Math.max(...sorted.map((b) => b.stats.profit), 1);
 
   const chartData = sorted.map((b) => ({
@@ -980,16 +1220,16 @@ function AnalyticsScreen({ ctx }) {
         <div style={S.summaryCard}>
           <div style={S.summaryOrb} />
           <p style={S.summaryLabel}>Total Revenue</p>
-          <h2 style={S.summaryAmount}>{fmt(totalRev)}</h2>
+          <h2 style={S.summaryAmount}>{fmt(totals.revenue)}</h2>
           <div style={S.summaryRow}>
             <div>
               <p style={S.summarySubLabel}>Profit</p>
-              <p style={S.summarySubVal}>{fmt(totalPft)}</p>
+              <p style={S.summarySubVal}>{fmt(totals.profit)}</p>
             </div>
             <div style={S.summaryDivider} />
             <div>
               <p style={S.summarySubLabel}>Avg Margin</p>
-              <p style={S.summarySubVal}>{totalRev > 0 ? ((totalPft / totalRev) * 100).toFixed(0) : 0}%</p>
+              <p style={S.summarySubVal}>{totals.margin}%</p>
             </div>
           </div>
         </div>
@@ -997,23 +1237,9 @@ function AnalyticsScreen({ ctx }) {
         {/* CHART */}
         <p style={S.sectionLabel}>Profit Overview</p>
         <div style={{ ...S.infoCard, height: 200, padding: "20px 10px 10px -10px", marginBottom: 20 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#9B7B5E", fontFamily: "'DM Sans', sans-serif" }} tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={(val) => val >= 1000 ? (val / 1000) + 'k' : val} tick={{ fontSize: 10, fill: "#9B7B5E", fontFamily: "'DM Sans', sans-serif" }} tickLine={false} axisLine={false} width={40} />
-              <Tooltip 
-                cursor={{ fill: "rgba(44,24,16,0.04)" }} 
-                contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 4px 16px rgba(44,24,16,0.1)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, color: "var(--text-primary)" }} 
-                itemStyle={{ color: "var(--text-primary)" }} 
-                formatter={(value) => [fmt(value), "Profit"]} 
-              />
-              <Bar dataKey="profit" radius={[8, 8, 0, 0]}>
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <Suspense fallback={<div style={{ height: "100%" }} />}>
+            <ProfitChart data={chartData} format={fmt} />
+          </Suspense>
         </div>
 
         {/* PROFIT RANKING */}
@@ -1039,15 +1265,21 @@ function AnalyticsScreen({ ctx }) {
 
         {/* BEST ITEMS ACROSS ALL */}
         <p style={S.sectionLabel}>Top Items (All Businesses)</p>
-        {businesses.flatMap((b) => b.inventory.map((i) => ({ ...i, bizName: b.name, bizColor: b.color, margin: (((i.price - i.cost) / i.price) * 100).toFixed(0) }))).sort((a, b) => b.sold - a.sold).slice(0, 5).map((item, i) => (
-          <div key={i} style={S.invRow}>
-            <div style={{ flex: 1 }}>
-              <p style={S.invName}>{item.name}</p>
-              <p style={S.invSub}>{item.bizName} · {item.sold} sold · {item.margin}% margin</p>
+        {businesses
+          .flatMap((b) => deriveInventory(b)
+            .filter((i) => !i.deletedAt)
+            .map((i) => ({ ...i, bizName: b.name, bizCurrency: b.currency, margin: itemEconomics(i).margin })))
+          .sort((a, b) => b.sold - a.sold)
+          .slice(0, 5)
+          .map((item) => (
+            <div key={item.id} style={S.invRow}>
+              <div style={{ flex: 1 }}>
+                <p style={S.invName}>{item.name}</p>
+                <p style={S.invSub}>{item.bizName} · {item.sold} sold · {item.margin}% margin</p>
+              </div>
+              <p style={S.invProfit}>{fmt(item.unitPrice * item.sold, item.bizCurrency)}</p>
             </div>
-            <p style={S.invProfit}>{fmt(item.price * item.sold)}</p>
-          </div>
-        ))}
+          ))}
         <div style={{ height: 16 }} />
       </div>
     </div>
@@ -1056,8 +1288,8 @@ function AnalyticsScreen({ ctx }) {
 
 /* ─── SETTINGS SCREEN ───────────────────────────────────────────────────────── */
 function SettingsScreen({ ctx }) {
-  const { setScreen, businesses, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, setUserName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
-  const currencies = ["XAF","NGN","GHS","KES","USD","EUR"];
+  const { setScreen, businesses, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, userName, userAvatar, isDarkMode, setIsDarkMode } = ctx;
+  const currencies = CURRENCIES;
 
   return (
     <div style={S.screen}>
@@ -1125,6 +1357,7 @@ function SettingsScreen({ ctx }) {
               <DollarSign size={20} color="#9B7B5E" />
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>Currency</p>
+                <p style={S.settingsRowSub}>Applies to new businesses</p>
               </div>
               <select
                 value={currency}
@@ -1163,11 +1396,9 @@ function SettingsScreen({ ctx }) {
                 return;
               }
 
-              const cur = currency || "XAF";
-              const fmtNum = (n) => new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(n));
               const esc = (v) => {
-                const s = String(v ?? "");
-                return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+                const str = String(v ?? "");
+                return str.includes(",") || str.includes('"') || str.includes("\n") ? `"${str.replace(/"/g, '""')}"` : str;
               };
 
               const rows = [];
@@ -1178,89 +1409,82 @@ function SettingsScreen({ ctx }) {
               rows.push(["BizTrack Business Report"]);
               rows.push([`Generated: ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`]);
               rows.push([`Owner: ${userName || "N/A"}`]);
-              rows.push([`Currency: ${cur}`]);
               rows.push([`Version: ${VERSION}`]);
 
               // ── PORTFOLIO SUMMARY ──
               header("Portfolio Summary");
-              const totalRev = businesses.reduce((a, b) => a + b.sales.reduce((s, sl) => s + sl.revenue, 0), 0);
-              const totalCost = businesses.reduce((a, b) => a + b.sales.reduce((s, sl) => s + sl.cost, 0), 0);
-              const totalProfit = totalRev - totalCost;
-              const totalItems = businesses.reduce((a, b) => a + b.inventory.length, 0);
-              const totalSales = businesses.reduce((a, b) => a + b.sales.length, 0);
+              const totals = calcPortfolioStats(businesses);
               rows.push(["Total Businesses", businesses.length]);
-              rows.push(["Total Inventory Items", totalItems]);
-              rows.push(["Total Sales Recorded", totalSales]);
-              rows.push(["Total Revenue", fmtNum(totalRev)]);
-              rows.push(["Total Cost of Goods", fmtNum(totalCost)]);
-              rows.push(["Total Profit", fmtNum(totalProfit)]);
-              rows.push(["Overall Margin", totalRev > 0 ? ((totalProfit / totalRev) * 100).toFixed(1) + "%" : "N/A"]);
+              rows.push(["Total Inventory Items", businesses.reduce((a, b) => a + b.items.filter((i) => !i.deletedAt).length, 0)]);
+              rows.push(["Total Sales Recorded", businesses.reduce((a, b) => a + b.sales.length, 0)]);
+              rows.push(["Total Revenue", fmt(totals.revenue)]);
+              rows.push(["Total Cost of Goods", fmt(totals.cogs)]);
+              rows.push(["Total Profit", fmt(totals.profit)]);
+              rows.push(["Overall Margin", totals.margin + "%"]);
 
               // ── PER BUSINESS BREAKDOWN ──
               businesses.forEach((biz, idx) => {
+                const cur = biz.currency;
                 const stats = calcBizStats(biz);
-                const status = getStatus(stats.margin);
+                const inventory = deriveInventory(biz).filter((i) => !i.deletedAt);
 
                 header(`Business ${idx + 1}: ${biz.name}`);
                 rows.push(["Category", biz.category || "N/A"]);
-                rows.push(["Status", STATUS_STYLE[status]?.label || status]);
-                rows.push(["Revenue", fmtNum(stats.revenue)]);
-                rows.push(["Cost of Goods", fmtNum(stats.cogs)]);
-                rows.push(["Profit", fmtNum(stats.profit)]);
+                rows.push(["Currency", cur]);
+                rows.push(["Status", STATUS_STYLE[getStatus(stats.margin)]?.label || ""]);
+                rows.push(["Revenue", fmt(stats.revenue, cur)]);
+                rows.push(["Cost of Goods", fmt(stats.cogs, cur)]);
+                rows.push(["Profit", fmt(stats.profit, cur)]);
                 rows.push(["Margin", stats.margin + "%"]);
-                rows.push(["Inventory Items", biz.inventory.length]);
-                rows.push(["Sales Count", biz.sales.length]);
+                rows.push(["Inventory Items", inventory.length]);
+                rows.push(["Sales Count", stats.salesCount]);
 
-                // Inventory table
-                if (biz.inventory.length > 0) {
+                if (inventory.length > 0) {
                   sep();
                   rows.push(["── Inventory ──"]);
-                  rows.push(["Item Name", "In Stock", "Sold", "Unit Cost", "Selling Price", "Stock Value", "Potential Revenue"]);
-                  biz.inventory.forEach(item => {
+                  rows.push(["Item Name", "In Stock", "Sold", "Avg Unit Cost", "Selling Price", "Stock Value", "Potential Revenue"]);
+                  inventory.forEach((item) => {
                     rows.push([
                       esc(item.name),
                       item.qty,
-                      item.sold || 0,
-                      fmtNum(item.cost),
-                      fmtNum(item.price),
-                      fmtNum(item.cost * item.qty),
-                      fmtNum(item.price * item.qty)
+                      item.sold,
+                      fmt(item.avgCost, cur),
+                      fmt(item.unitPrice, cur),
+                      fmt(item.avgCost * Math.max(item.qty, 0), cur),
+                      fmt(item.unitPrice * Math.max(item.qty, 0), cur),
                     ]);
                   });
                 }
 
-                // Sales table
                 if (biz.sales.length > 0) {
                   sep();
                   rows.push(["── Sales History ──"]);
-                  rows.push(["Date", "Item", "Qty", "Selling Price", "Revenue", "Cost", "Profit", "Discount", "Note"]);
-                  biz.sales.forEach(s => {
-                    const profit = s.revenue - s.cost;
+                  rows.push(["Date", "Item", "Qty", "Unit Price", "Revenue", "Cost", "Profit", "Discount", "Note"]);
+                  biz.sales.forEach((sale) => {
                     rows.push([
-                      s.date,
-                      esc(s.itemName),
-                      s.qty,
-                      fmtNum(s.actualPrice || s.revenue / (s.qty || 1)),
-                      fmtNum(s.revenue),
-                      fmtNum(s.cost),
-                      fmtNum(profit),
-                      s.discount ? fmtNum(s.discount) : "-",
-                      esc(s.note || "")
+                      String(sale.occurredAt).slice(0, 10),
+                      esc(sale.itemName),
+                      sale.qty,
+                      fmt(sale.unitPrice, cur),
+                      fmt(saleRevenue(sale), cur),
+                      fmt(saleCost(sale), cur),
+                      fmt(saleProfit(sale), cur),
+                      saleDiscount(sale) ? fmt(saleDiscount(sale), cur) : "-",
+                      esc(sale.note || ""),
                     ]);
                   });
                 }
               });
 
-              // ── FOOTER ──
               sep();
               rows.push(["End of Report — BizTrack " + VERSION]);
 
-              const csvString = rows.map(r => r.join(",")).join("\n");
+              const csvString = rows.map((r) => r.join(",")).join("\n");
               const blob = new Blob(["\uFEFF" + csvString], { type: "text/csv;charset=utf-8;" });
               const url = URL.createObjectURL(blob);
               const link = document.createElement("a");
               link.href = url;
-              link.setAttribute("download", `BizTrack_Report_${new Date().toISOString().slice(0,10)}.csv`);
+              link.setAttribute("download", `BizTrack_Report_${new Date().toISOString().slice(0, 10)}.csv`);
               document.body.appendChild(link);
               link.click();
               document.body.removeChild(link);
@@ -1275,14 +1499,51 @@ function SettingsScreen({ ctx }) {
               <ChevronRight size={20} color="#9B7B5E" />
             </div>
             <div style={S.settingsDivider} />
-            <div style={S.settingsRow} onClick={() => showToast("Cloud sync coming in v2!")}>
-              <Cloud size={20} color="#9B7B5E" />
-              <div style={{ flex: 1 }}>
-                <p style={S.settingsRowLabel}>Cloud Backup</p>
-                <p style={S.settingsRowSub}>Sync across devices (v2)</p>
+            {/*
+              The route an existing local-only user takes to get an account.
+              Before this, declining the sign-in screen set skippedAuth and
+              nothing ever cleared it, so there was no way back inside the app
+              -- and this row still advertised cloud backup as "Soon" while it
+              was running.
+            */}
+            {!isBackendConfigured ? (
+              <div style={S.settingsRow}>
+                <Cloud size={20} color="#9B7B5E" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Cloud Backup</p>
+                  <p style={S.settingsRowSub}>Not available in this build.</p>
+                </div>
               </div>
-              <span style={{ ...S.settingsRowSub, color: "var(--accent-color)", fontWeight:700 }}>Soon</span>
-            </div>
+            ) : ctx.auth?.session ? (
+              <div style={S.settingsRow} onClick={() => {
+                if (confirm("Sign out?\n\nYour records stay on this device — signing out never deletes them.")) {
+                  ctx.signOutOfAccount();
+                  showToast("Signed out. Your records are still here.");
+                }
+              }}>
+                <Cloud size={20} color="#3A7D2C" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Backed up to your account</p>
+                  <p style={S.settingsRowSub}>
+                    {ctx.auth.session.user?.email || "Signed in"}
+                    {ctx.sync?.status === "offline" ? " · waiting for a connection" : ""}
+                    {ctx.sync?.status === "synced" ? " · up to date" : ""}
+                  </p>
+                </div>
+                <span style={{ ...S.settingsRowSub, color: "var(--accent-color)", fontWeight: 700 }}>Sign out</span>
+              </div>
+            ) : (
+              <div style={S.settingsRow} onClick={() => { track("account.start_from_settings"); ctx.startSignIn(); }}>
+                <Cloud size={20} color="var(--accent-color)" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Back up to an account</p>
+                  <p style={S.settingsRowSub}>
+                    Keep your books if this phone is lost, and reach them from another one. Nothing on this device is removed.
+                  </p>
+                </div>
+                <ChevronRight size={20} color="var(--text-secondary)" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -1295,6 +1556,24 @@ function SettingsScreen({ ctx }) {
               <div style={{ flex: 1 }}>
                 <p style={S.settingsRowLabel}>About BizTrack</p>
                 <p style={S.settingsRowSub}>Version {VERSION} · Features & Updates</p>
+              </div>
+              <ChevronRight size={20} color="var(--text-secondary)" />
+            </div>
+            <div style={S.settingsDivider} />
+            <div style={S.settingsRow} onClick={() => setScreen("privacy")}>
+              <Shield size={20} color="var(--accent-color)" />
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Privacy Policy</p>
+                <p style={S.settingsRowSub}>What we store, where it goes, and your rights.</p>
+              </div>
+              <ChevronRight size={20} color="var(--text-secondary)" />
+            </div>
+            <div style={S.settingsDivider} />
+            <div style={S.settingsRow} onClick={() => setScreen("terms")}>
+              <ScrollText size={20} color="var(--accent-color)" />
+              <div style={{ flex: 1 }}>
+                <p style={S.settingsRowLabel}>Terms of Service</p>
+                <p style={S.settingsRowSub}>Trial, pricing, and what we do and don't promise.</p>
               </div>
               <ChevronRight size={20} color="var(--text-secondary)" />
             </div>
@@ -1343,7 +1622,6 @@ function ModalShell({ onClose, title, children }) {
 function AddBizModal({ ctx }) {
   const { setModal, addBusiness } = ctx;
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [category, setCategory] = useState("Crochet");
   const [color, setColor] = useState(COLORS[0]);
   const [emoji, setEmoji] = useState("🧶");
@@ -1388,18 +1666,33 @@ function AddBizModal({ ctx }) {
 }
 
 function AddItemModal({ ctx }) {
-  const { setModal, activeBizId, addInventoryItem } = ctx;
+  const { setModal, activeBizId, activeBiz, addInventoryItem } = ctx;
+  const cur = activeBiz?.currency;
   const [name, setName] = useState("");
   const [qty, setQty] = useState("");
   const [cost, setCost] = useState("");
   const [price, setPrice] = useState("");
 
-  const margin = cost && price ? (((Number(price) - Number(cost)) / Number(price)) * 100).toFixed(0) : null;
-  const profit = cost && price ? Number(price) - Number(cost) : null;
+  // Typed values are in major units (what the user says out loud); everything
+  // past this boundary is integer minor units.
+  const costMinor = toMinor(cost, cur);
+  const priceMinor = toMinor(price, cur);
+  const preview = cost !== "" && price !== ""
+    ? { profit: priceMinor - costMinor, margin: marginPercent(priceMinor, costMinor) }
+    : null;
 
   const submit = () => {
-    if (!name.trim() || !qty || !cost || !price) return;
-    addInventoryItem(activeBizId, { name: name.trim(), qty: Number(qty), cost: Number(cost), price: Number(price) });
+    if (!name.trim()) return alert("Please enter an item name.");
+    const q = num(qty, NaN);
+    if (!(q > 0)) return alert("Quantity must be greater than 0.");
+    if (!(num(cost, NaN) >= 0)) return alert("Cost cannot be negative.");
+    if (!(num(price, NaN) > 0)) return alert("Selling price must be greater than 0.");
+    addInventoryItem(activeBizId, {
+      name: name.trim(),
+      qty: Math.round(q),
+      unitCost: costMinor,
+      unitPrice: priceMinor,
+    });
     setModal(null);
   };
 
@@ -1410,23 +1703,23 @@ function AddItemModal({ ctx }) {
         <input style={S.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bucket Hat" />
 
         <p style={S.fieldLabel}>Quantity Purchased</p>
-        <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 20" />
+        <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 20" />
 
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
-            <p style={S.fieldLabel}>Cost per Unit (XAF)</p>
-            <input style={S.input} type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="e.g. 1500" />
+            <p style={S.fieldLabel}>Cost per Unit ({cur})</p>
+            <input style={S.input} type="number" min="0" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="e.g. 1500" />
           </div>
           <div style={{ flex: 1 }}>
-            <p style={S.fieldLabel}>Selling Price (XAF)</p>
-            <input style={S.input} type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 4500" />
+            <p style={S.fieldLabel}>Selling Price ({cur})</p>
+            <input style={S.input} type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 4500" />
           </div>
         </div>
 
-        {margin !== null && (
+        {preview && (
           <div style={S.calcPreview}>
-            <p style={S.calcLabel}>Profit per unit: <strong>{fmt(profit)}</strong></p>
-            <p style={S.calcLabel}>Margin: <strong style={{ color: Number(margin) >= 30 ? "#3A7D2C" : "#C0392B" }}>{margin}%</strong></p>
+            <p style={S.calcLabel}>Profit per unit: <strong>{fmt(preview.profit, cur)}</strong></p>
+            <p style={S.calcLabel}>Margin: <strong style={{ color: preview.margin >= 30 ? "#3A7D2C" : "#C0392B" }}>{preview.margin}%</strong></p>
           </div>
         )}
 
@@ -1438,19 +1731,27 @@ function AddItemModal({ ctx }) {
 
 function RestockModal({ ctx }) {
   const { setModal, activeBiz, restockItemId, restockInventoryItem, setRestockItemId } = ctx;
-  const item = activeBiz?.inventory.find((i) => i.id === restockItemId);
+  const cur = activeBiz?.currency;
+  const item = activeBiz
+    ? deriveInventory(activeBiz).find((i) => i.id === restockItemId && !i.deletedAt)
+    : null;
   const [qty, setQty] = useState("");
-  const [cost, setCost] = useState(item ? item.cost : "");
+  const [cost, setCost] = useState("");
+
+  const close = () => { setRestockItemId(null); setModal(null); };
 
   const submit = () => {
-    if (!item || !qty) return;
-    restockInventoryItem(activeBiz.id, item.id, Number(qty), cost ? Number(cost) : null);
-    setRestockItemId(null);
-    setModal(null);
+    if (!item) return;
+    const q = num(qty, NaN);
+    if (!(q > 0)) return alert("Quantity must be greater than 0.");
+    if (cost !== "" && !(num(cost, NaN) >= 0)) return alert("Cost cannot be negative.");
+    // Blank keeps the running average unchanged.
+    restockInventoryItem(activeBiz.id, item.id, Math.round(q), cost === "" ? null : toMinor(cost, cur));
+    close();
   };
 
   return (
-    <ModalShell onClose={() => { setRestockItemId(null); setModal(null); }} title="Restock Item">
+    <ModalShell onClose={close} title="Restock Item">
       <div style={S.modalBody}>
         {!item ? (
           <div style={S.emptyState}>
@@ -1464,10 +1765,20 @@ function RestockModal({ ctx }) {
             <input style={S.input} value={item.name} disabled />
 
             <p style={S.fieldLabel}>Additional Quantity</p>
-            <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 10" />
+            <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="e.g. 10" />
 
-            <p style={S.fieldLabel}>Updated Cost per Unit (optional)</p>
-            <input style={S.input} type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Leave blank to keep current cost" />
+            <p style={S.fieldLabel}>Cost per Unit for this batch (optional)</p>
+            <input
+              style={S.input}
+              type="number"
+              min="0"
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder={`Leave blank to keep ${fmt(item.avgCost, cur)}`}
+            />
+            <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "-4px 0 0" }}>
+              A different price here is averaged in. It won't reprice the {Math.max(item.qty, 0)} you already have.
+            </p>
 
             <button style={S.primaryBtn} onClick={submit}>Restock Item</button>
           </>
@@ -1479,84 +1790,95 @@ function RestockModal({ ctx }) {
 
 function AddSaleModal({ ctx }) {
   const { setModal, activeBiz, addSale } = ctx;
-  const [tab, setTab] = useState("inventory"); // "inventory" | "custom"
-  const [itemId, setItemId] = useState(activeBiz?.inventory[0]?.id || "");
+  const cur = activeBiz?.currency;
+  const inventory = activeBiz ? deriveInventory(activeBiz).filter((i) => !i.deletedAt) : [];
+
+  const [tab, setTab] = useState("inventory");
+  const [itemId, setItemId] = useState(inventory[0]?.id || "");
   const [qty, setQty] = useState("1");
-  const [actualPrice, setActualPrice] = useState("");
+  const [actualPrice, setActualPrice] = useState(
+    inventory[0] ? String(toMajor(inventory[0].unitPrice, cur)) : ""
+  );
   const [note, setNote] = useState("");
-  
-  // Custom sale fields
+
   const [manualName, setManualName] = useState("");
   const [materialCost, setMaterialCost] = useState("");
   const [laborCost, setLaborCost] = useState("");
 
-  const selectedItem = activeBiz?.inventory.find((i) => String(i.id) === String(itemId));
+  const selectedItem = inventory.find((i) => i.id === itemId) || null;
 
   const handleItemChange = (e) => {
     setItemId(e.target.value);
-    const item = activeBiz?.inventory.find((i) => String(i.id) === e.target.value);
-    if (item) setActualPrice(String(item.price));
+    const next = inventory.find((i) => i.id === e.target.value);
+    // Prefill from the newly chosen item, always. The old effect only filled a
+    // blank field, so switching items silently kept the previous item's price.
+    if (next) setActualPrice(String(toMajor(next.unitPrice, cur)));
   };
 
-  useEffect(() => {
-    if (tab === "inventory" && selectedItem && !actualPrice) {
-      setActualPrice(String(selectedItem.price));
-    }
-  }, [tab, selectedItem]);
+  const priceMinor = toMinor(actualPrice, cur);
+  const qtyNum = Math.max(0, Math.round(num(qty)));
+  const manualCostMinor = toMinor(materialCost, cur) + toMinor(laborCost, cur);
 
-  const soldBelow = tab === "inventory" && selectedItem && actualPrice && Number(actualPrice) < selectedItem.price;
-  const soldAbove = tab === "inventory" && selectedItem && actualPrice && Number(actualPrice) > selectedItem.price;
+  const soldBelow = tab === "inventory" && selectedItem && actualPrice !== "" && priceMinor < selectedItem.unitPrice;
+  const soldAbove = tab === "inventory" && selectedItem && actualPrice !== "" && priceMinor > selectedItem.unitPrice;
 
-  const totalManualCost = Number(materialCost || 0) + Number(laborCost || 0);
-
-  const preview = tab === "inventory" 
-    ? (selectedItem && qty && actualPrice ? {
-        revenue: Number(actualPrice) * Number(qty),
-        profit: (Number(actualPrice) - selectedItem.cost) * Number(qty),
-        discount: soldBelow ? (selectedItem.price - Number(actualPrice)) * Number(qty) : 0,
-      } : null)
-    : (manualName && actualPrice ? {
-        revenue: Number(actualPrice) * Number(qty || 1),
-        profit: (Number(actualPrice) - totalManualCost) * Number(qty || 1),
-        discount: 0
-      } : null);
+  const unitCostMinor = tab === "inventory" ? (selectedItem?.avgCost ?? 0) : manualCostMinor;
+  const preview = (tab === "inventory" ? selectedItem && actualPrice !== "" : manualName && actualPrice !== "")
+    ? { revenue: priceMinor * qtyNum, profit: (priceMinor - unitCostMinor) * qtyNum }
+    : null;
 
   const submit = () => {
+    if (!(qtyNum > 0)) return alert("Quantity must be greater than 0.");
+    if (!(num(actualPrice, NaN) >= 0)) return alert("Please enter a valid selling price.");
+
     if (tab === "inventory") {
-      if (!itemId || !qty || !actualPrice) return;
-      addSale(activeBiz.id, { itemId: String(itemId), qty: Number(qty), actualPrice: Number(actualPrice), note, isCustom: false });
+      if (!selectedItem) return alert("Pick an item to sell.");
+      // Overselling is allowed on purpose: the sale happened. The resulting
+      // negative balance is flagged for reconciliation instead of blocked.
+      addSale(activeBiz.id, {
+        itemId: selectedItem.id,
+        itemName: selectedItem.name,
+        qty: qtyNum,
+        unitPrice: priceMinor,
+        unitCost: selectedItem.avgCost,
+        askingPrice: selectedItem.unitPrice,
+        note,
+        isCustom: false,
+      });
     } else {
-      if (!manualName || !actualPrice) return;
-      addSale(activeBiz.id, { 
-        isCustom: true, 
-        manualName, 
-        manualCost: totalManualCost, 
-        actualPrice: Number(actualPrice), 
-        qty: Number(qty) || 1, 
-        note 
+      if (!manualName.trim()) return alert("Give this custom sale a name.");
+      addSale(activeBiz.id, {
+        itemId: null,
+        itemName: manualName.trim(),
+        qty: qtyNum,
+        unitPrice: priceMinor,
+        unitCost: manualCostMinor,
+        askingPrice: priceMinor,
+        note,
+        isCustom: true,
       });
     }
     setModal(null);
   };
-  const isInventoryEmpty = tab === "inventory" && activeBiz?.inventory.length === 0;
+
+  const isInventoryEmpty = tab === "inventory" && inventory.length === 0;
 
   return (
     <ModalShell onClose={() => setModal(null)} title="Record Sale">
       <div style={S.modalBody}>
-        {/* TAB SWITCHER */}
         <div style={{ display: "flex", gap: 8, marginBottom: 20, background: "var(--border-color)", padding: 4, borderRadius: 12 }}>
-          <button 
+          <button
             style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", background: tab === "inventory" ? "var(--bg-primary)" : "transparent", color: tab === "inventory" ? "var(--text-primary)" : "var(--text-secondary)" }}
             onClick={() => setTab("inventory")}
           >From Inventory</button>
-          <button 
+          <button
             style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", background: tab === "custom" ? "var(--bg-primary)" : "transparent", color: tab === "custom" ? "var(--text-primary)" : "var(--text-secondary)" }}
             onClick={() => setTab("custom")}
           >Custom Entry</button>
         </div>
 
         {tab === "inventory" ? (
-          activeBiz?.inventory.length === 0 ? (
+          inventory.length === 0 ? (
             <div style={S.emptyState}>
               <div style={S.emptyIcon}><Package size={40} color="#2C1810" strokeWidth={1.5} /></div>
               <p style={S.emptyTitle}>No items in inventory</p>
@@ -1566,48 +1888,57 @@ function AddSaleModal({ ctx }) {
             <>
               <p style={S.fieldLabel}>Select Item</p>
               <select style={S.input} value={itemId} onChange={handleItemChange}>
-                {activeBiz.inventory.map((i) => (
+                {inventory.map((i) => (
                   <option key={i.id} value={i.id}>{i.name} ({i.qty} in stock)</option>
                 ))}
               </select>
-              
+
               <p style={S.fieldLabel}>Quantity Sold</p>
-              <input style={S.input} type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" />
-              
-              <p style={S.fieldLabel}>Actual Selling Price (XAF)</p>
+              <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" />
+
+              {selectedItem && qtyNum > selectedItem.qty && (
+                <p style={{ fontSize: 11, color: "#E67E22", margin: "-4px 0 0", fontWeight: 600 }}>
+                  Only {Math.max(selectedItem.qty, 0)} in stock. The sale will still be recorded and flagged.
+                </p>
+              )}
+
+              <p style={S.fieldLabel}>Actual Selling Price ({cur})</p>
               <input
-                style={{ ...S.input, borderColor: soldBelow ? "#E67E22" : soldAbove ? "#3A7D2C" : "#E0D6C8" }}
+                style={{ ...S.input, borderColor: soldBelow ? "#E67E22" : soldAbove ? "#3A7D2C" : "var(--border-color)" }}
                 type="number"
+                min="0"
                 value={actualPrice}
                 onChange={(e) => setActualPrice(e.target.value)}
                 placeholder="Price paid by customer"
               />
-              
             </>
           )
         ) : (
           <>
             <p style={S.fieldLabel}>Custom Item Name</p>
             <input style={S.input} value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="e.g. Custom Crochet Beanie" />
-            
-            <p style={S.fieldLabel}>Price Paid by Customer (XAF)</p>
-            <input style={S.input} type="number" value={actualPrice} onChange={(e) => setActualPrice(e.target.value)} placeholder="0" />
-            
+
+            <p style={S.fieldLabel}>Price Paid by Customer ({cur})</p>
+            <input style={S.input} type="number" min="0" value={actualPrice} onChange={(e) => setActualPrice(e.target.value)} placeholder="0" />
+
+            <p style={S.fieldLabel}>Quantity</p>
+            <input style={S.input} type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="1" />
+
             <div style={{ display: "flex", gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <p style={S.fieldLabel}>Material / Base Cost</p>
-                <input style={S.input} type="number" value={materialCost} onChange={(e) => setMaterialCost(e.target.value)} placeholder="0" />
+                <input style={S.input} type="number" min="0" value={materialCost} onChange={(e) => setMaterialCost(e.target.value)} placeholder="0" />
               </div>
               <div style={{ flex: 1 }}>
                 <p style={S.fieldLabel}>Labor Cost</p>
-                <input style={S.input} type="number" value={laborCost} onChange={(e) => setLaborCost(e.target.value)} placeholder="0" />
+                <input style={S.input} type="number" min="0" value={laborCost} onChange={(e) => setLaborCost(e.target.value)} placeholder="0" />
               </div>
             </div>
-            
-            {totalManualCost > 0 && (
-               <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: -8, textAlign: "right" }}>
-                 Total cost: {fmt(totalManualCost)}
-               </p>
+
+            {manualCostMinor > 0 && (
+              <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: -8, textAlign: "right" }}>
+                Total cost: {fmt(manualCostMinor, cur)}
+              </p>
             )}
           </>
         )}
@@ -1619,8 +1950,8 @@ function AddSaleModal({ ctx }) {
 
             {preview && (
               <div style={S.calcPreview}>
-                <p style={S.calcLabel}>Total Revenue: <strong>{fmt(preview.revenue)}</strong></p>
-                <p style={S.calcLabel}>Net Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit)}</strong></p>
+                <p style={S.calcLabel}>Total Revenue: <strong>{fmt(preview.revenue, cur)}</strong></p>
+                <p style={S.calcLabel}>Net Profit: <strong style={{ color: preview.profit >= 0 ? "#3A7D2C" : "#C0392B" }}>{preview.profit >= 0 ? "+" : ""}{fmt(preview.profit, cur)}</strong></p>
               </div>
             )}
 
@@ -1741,17 +2072,6 @@ function Toast({ msg, onDismiss }) {
       <div style={{ background: "rgba(44, 24, 16, 0.95)", color: "#FAF9F7", padding: "12px 24px", borderRadius: 30, fontSize: 13, fontWeight: 600, boxShadow: "0 10px 25px rgba(0,0,0,0.3)", animation: "toastIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards", cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)" }}>
         {msg}
       </div>
-      <style>{`
-        @keyframes toastIn {
-          from { opacity: 0; transform: translateY(20px) scale(0.9); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .spin { animation: spin 1s linear infinite; }
-      `}</style>
     </div>
   );
 }
@@ -1759,7 +2079,7 @@ function Toast({ msg, onDismiss }) {
 /* ─── BOTTOM NAV ────────────────────────────────────────────────────────────── */
 /* ─── BOTTOM NAV ────────────────────────────────────────────────────────────── */
 function BottomNav({ ctx }) {
-  const { screen, setScreen, setModal } = ctx;
+  const { screen, setScreen } = ctx;
   const tabs = [
     { id: "home", icon: <Home size={22} />, label: "Home" },
     { id: "analytics", icon: <div id="nav-analytics"><BarChart2 size={22} /></div>, label: "Analytics" },
@@ -1791,7 +2111,7 @@ function AboutScreen({ ctx }) {
     { icon: <Store size={20} />, title: "Multi-Business Management", desc: "Track and manage multiple business ventures from a single unified dashboard." },
     { icon: <Package size={20} />, title: "Smart Inventory Tracking", desc: "Real-time stock monitoring with intelligent low-stock alerts and cost-per-unit analysis." },
     { icon: <TrendingUp size={20} />, title: "Performance Analytics", desc: "Visualize your growth with profit rankings, revenue charts, and detailed business insights." },
-    { icon: <Lock size={20} />, title: "Secure & Private", desc: "Your data stays on your device. Protected by industrial-grade PIN encryption." },
+    { icon: <Lock size={20} />, title: "Yours, and portable", desc: "Records are stored on your device and, if you sign in, backed up to your account so you can reach them from another phone. Export everything as CSV whenever you want." },
     { icon: <Cloud size={20} />, title: "Local-First / PWA Ready", desc: "Install BizTrack on your home screen for a native experience that works offline." },
     { icon: <Sparkles size={20} />, title: "Custom Sales Entry", desc: "Flexible recording for both inventoried products and custom one-off services." }
   ];
@@ -1898,10 +2218,9 @@ function AboutScreen({ ctx }) {
 
 /* ─── ONBOARDING ───────────────────────────────────────────────────────────── */
 function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
-  const { businesses, setBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold } = ctx;
+  const { businesses, replaceBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold } = ctx;
   const [step, setStep] = useState(0);
   const [showImport, setShowImport] = useState(false);
-  const [importData, setImportData] = useState("");
   
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
@@ -1919,24 +2238,41 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
   };
 
   const handleExport = () => {
-    const data = { businesses, userName, userEmail, currency, lowStockThreshold };
-    navigator.clipboard.writeText(JSON.stringify(data));
-    alert("Data copied to clipboard! Now open the Installed App and paste it there.");
+    const payload = buildBackup({ businesses, userName, userEmail, currency, lowStockThreshold });
+    if (saveBackupFile(payload)) {
+      alert("Saved to a file. Open BizTrack on the other phone and choose Load from File.");
+    } else {
+      alert("Could not save the file on this device.");
+    }
   };
 
-  const handleImport = () => {
+  /**
+   * Takes the data directly instead of reading it from state.
+   *
+   * It used to read `importData`, which the Paste Code button set immediately
+   * before calling this -- so it parsed the PREVIOUS value, which on a first
+   * attempt was the empty string. Transfer-between-phones therefore failed
+   * every single time with "that doesn't look like a backup code", on the one
+   * screen someone reaches while moving their books to a new device.
+   */
+  const handleImport = (raw) => {
+    let parsed;
     try {
-      const data = JSON.parse(importData);
-      if (data.businesses) setBusinesses(data.businesses);
-      if (data.userName) setUserName(data.userName);
-      if (data.userEmail) setUserEmail(data.userEmail);
-      if (data.currency) setCurrency(data.currency);
-      if (data.lowStockThreshold) setLowStockThreshold(data.lowStockThreshold);
-      alert("Data imported successfully!");
-      setShowImport(false);
-    } catch (e) {
-      alert("Invalid backup code.");
+      // parseBackup accepts codes exported by older builds too, and migrates
+      // them on the way in.
+      parsed = parseBackup(typeof raw === "string" ? JSON.parse(raw) : raw, currency);
+    } catch {
+      return alert("That doesn't look like a BizTrack backup.");
     }
+    if (!parsed) return alert("That backup is missing or has damaged business data, so nothing was changed.");
+
+    replaceBusinesses(parsed.businesses);
+    if (parsed.userName) setUserName(parsed.userName);
+    if (parsed.userEmail) setUserEmail(parsed.userEmail);
+    if (parsed.currency) setCurrency(parsed.currency);
+    if (parsed.lowStockThreshold) setLowStockThreshold(parsed.lowStockThreshold);
+    alert(`Restored ${parsed.businesses.length} business${parsed.businesses.length === 1 ? "" : "es"}.`);
+    setShowImport(false);
   };
 
   return (
@@ -1984,18 +2320,35 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
 
               {showImport && (
                 <div style={{ display: "flex", gap: 8, animation: "fadeIn 0.3s ease" }}>
-                  <button 
-                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
+                  <button
+                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }}
                     onClick={handleExport}
-                  >Export Code</button>
-                  <button 
-                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }} 
-                    onClick={() => {
-                      const code = prompt("Paste your backup code:");
-                      if (code) { setImportData(code); handleImport(); }
+                  >Save to File</button>
+                  <button
+                    style={{ ...S.ghostBtn, flex: 1, fontSize: 12, padding: "10px", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.6)" }}
+                    onClick={async () => {
+                      let raw;
+                      try {
+                        raw = await pickBackupFile();
+                      } catch (err) {
+                        return alert(err.message);
+                      }
+                      if (raw) handleImport(raw);
                     }}
-                  >Paste Code</button>
+                  >Load from File</button>
                 </div>
+              )}
+
+              {showImport && (
+                <button
+                  style={{ ...S.textBtn, color: "rgba(255,255,255,0.45)", fontSize: 11, marginTop: 10 }}
+                  onClick={() => {
+                    const code = prompt("Paste your backup code:");
+                    if (code) handleImport(code);
+                  }}
+                >
+                  I have a code from an older version
+                </button>
               )}
             </div>
           </div>
@@ -2330,8 +2683,7 @@ function AccountScreen({ ctx }) {
   const joinDate = useStore(s => s.joinDate);
   const formattedDate = new Date(joinDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
-  const totalRevenue = businesses.reduce((acc, b) => acc + b.sales.reduce((s, sale) => s + sale.revenue, 0), 0);
-  const totalProfit = businesses.reduce((acc, b) => acc + b.sales.reduce((s, sale) => s + (sale.revenue - sale.cost), 0), 0);
+  const lifetime = calcPortfolioStats(businesses);
   
   return (
     <div style={S.screen}>
@@ -2361,11 +2713,11 @@ function AccountScreen({ ctx }) {
         <div style={S.statsGrid}>
           <div style={S.statCard}>
             <p style={S.statLbl}>Lifetime Revenue</p>
-            <p style={S.statVal}>{fmt(totalRevenue)}</p>
+            <p style={S.statVal}>{fmt(lifetime.revenue)}</p>
           </div>
           <div style={S.statCard}>
             <p style={S.statLbl}>Lifetime Profit</p>
-            <p style={{ ...S.statVal, color: "#3A7D2C" }}>{fmt(totalProfit)}</p>
+            <p style={{ ...S.statVal, color: "#3A7D2C" }}>{fmt(lifetime.profit)}</p>
           </div>
         </div>
 
@@ -2451,35 +2803,82 @@ function AccountScreen({ ctx }) {
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>Data Management</p>
           <div style={S.settingsCard}>
+             {/*
+               A file, not the clipboard. A few hundred sales is tens to
+               hundreds of kilobytes, and that pasted into a prompt() on Android
+               truncates silently -- which restores PART of someone's books and
+               looks like it worked. A file also survives, can be kept, and can
+               be sent over WhatsApp, which is how these users move things
+               between phones.
+             */}
              <div style={S.settingsRow} onClick={() => {
-               const data = { businesses, userName, userEmail: ctx.userEmail, currency: ctx.currency, lowStockThreshold: ctx.lowStockThreshold };
-               navigator.clipboard.writeText(JSON.stringify(data));
-               showToast("Data copied to clipboard!");
+               const payload = buildBackup({
+                 businesses, userName, userEmail: ctx.userEmail,
+                 currency: ctx.currency, lowStockThreshold: ctx.lowStockThreshold,
+               });
+               const totals = summarizeLocal(businesses);
+               if (saveBackupFile(payload)) {
+                 track("backup.save_file", { count: totals.businesses });
+                 showToast(`Saved ${totals.businesses} business${totals.businesses === 1 ? "" : "es"} to a file.`);
+               } else {
+                 showToast("Could not save the file on this device.");
+               }
              }}>
                <Download size={20} color="#3A7D2C" />
                <div style={{ flex: 1 }}>
-                 <p style={S.settingsRowLabel}>Backup Data</p>
-                 <p style={S.settingsRowSub}>Copy your data to move to another device.</p>
+                 <p style={S.settingsRowLabel}>Save My Data to a File</p>
+                 <p style={S.settingsRowSub}>Keep a copy, or move your books to another phone.</p>
                </div>
              </div>
              <div style={S.settingsDivider} />
-             <div style={S.settingsRow} onClick={() => {
-               const code = prompt("Paste your backup code here:");
-               if (!code) return;
+             <div style={S.settingsDivider} />
+             <div style={S.settingsRow} onClick={downloadSnapshot}>
+               <Shield size={20} color="#5C7A8B" />
+               <div style={{ flex: 1 }}>
+                 <p style={S.settingsRowLabel}>Pre-Upgrade Backup</p>
+                 <p style={S.settingsRowSub}>Download your data exactly as it was before the last update.</p>
+               </div>
+             </div>
+             <div style={S.settingsDivider} />
+             {/*
+               Restore genuinely replaces everything -- it is the one bulk write
+               left in the app -- so the confirmation states what arrives AND
+               what goes, in counts rather than in the word "data". parseBackup
+               validates before any of it is trusted.
+             */}
+             <div style={S.settingsRow} onClick={async () => {
+               let raw;
                try {
-                 const data = JSON.parse(code);
-                 if (data.businesses) ctx.setBusinesses(data.businesses);
-                 if (data.userName) ctx.setUserName(data.userName);
-                 if (data.userEmail) ctx.setUserEmail(data.userEmail);
-                 showToast("Data restored!");
-               } catch (e) {
-                 alert("Invalid backup code.");
+                 raw = await pickBackupFile();
+               } catch (err) {
+                 return alert(err.message);
                }
+               if (!raw) return; // cancelled; not an error, say nothing
+
+               const parsed = parseBackup(raw, ctx.currency);
+               if (!parsed) return alert("That backup is missing or has damaged business data, so nothing was changed.");
+
+               const incoming = summarizeLocal(parsed.businesses);
+               const current = summarizeLocal(businesses);
+
+               if (!confirm(
+                 "Restore this backup?" + "\n\n" +
+                 `Coming in: ${incoming.businesses} businesses, ${incoming.items} items, ${incoming.sales} sales.` + "\n" +
+                 `On this phone now: ${current.businesses} businesses, ${current.items} items, ${current.sales} sales.` + "\n\n" +
+                 "Everything currently on this phone is replaced. If you need it, cancel and save it to a file first."
+               )) return;
+
+               ctx.replaceBusinesses(parsed.businesses);
+               if (parsed.userName) ctx.setUserName(parsed.userName);
+               if (parsed.userEmail) ctx.setUserEmail(parsed.userEmail);
+               if (parsed.currency) ctx.setCurrency(parsed.currency);
+               track("backup.restore_file", { count: incoming.businesses });
+               showToast(`Restored ${incoming.businesses} business${incoming.businesses === 1 ? "" : "es"}.`);
              }}>
                <Upload size={20} color="#8B6914" />
                <div style={{ flex: 1 }}>
-                 <p style={S.settingsRowLabel}>Restore Data</p>
-                 <p style={S.settingsRowSub}>Import data from a backup code.</p>
+                 <p style={S.settingsRowLabel}>Restore From a File</p>
+                 <p style={S.settingsRowSub}>Load books saved from this or another phone.</p>
                </div>
              </div>
           </div>
@@ -2513,6 +2912,68 @@ function AccountScreen({ ctx }) {
           </div>
         </div>
 
+        {/* PRIVACY */}
+        {isBackendConfigured && (
+          <div style={S.settingsSection}>
+            <p style={S.settingsSectionTitle}>Privacy</p>
+            <div style={S.settingsCard}>
+              <div style={S.settingsRow} onClick={() => {
+                const next = !ctx.analyticsConsent;
+                ctx.chooseAnalytics(next);
+                showToast(next ? "Thank you — usage data on." : "Usage data off. Queue cleared.");
+              }}>
+                <TrendingUp size={20} color="#9B7B5E" />
+                <div style={{ flex: 1 }}>
+                  <p style={S.settingsRowLabel}>Share usage data</p>
+                  <p style={S.settingsRowSub}>
+                    Which screens and features you use, and crashes. Never your business data.
+                  </p>
+                </div>
+                <div style={{ width: 40, height: 20, background: ctx.analyticsConsent ? "#3A7D2C" : "#E0D6C8", borderRadius: 20, position: "relative", transition: "0.3s" }}>
+                  <div style={{ width: 16, height: 16, background: "var(--card-bg)", borderRadius: "50%", position: "absolute", top: 2, left: ctx.analyticsConsent ? 22 : 2, transition: "0.3s" }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ACCOUNT DELETION — right to erasure, self-service. */}
+        {isBackendConfigured && ctx.auth?.session && (
+          <div style={S.settingsSection}>
+            <p style={S.settingsSectionTitle}>Danger Zone</p>
+            <div style={S.settingsCard}>
+              <div style={S.settingsRow} onClick={async () => {
+                // Two gates on purpose. The first is the one that matters: it
+                // offers the export BEFORE anything is destroyed, because the
+                // cloud copy may be the only backup of someone's books.
+                if (!confirm(
+                  "Delete your account?\n\n" +
+                  "This erases your account and every record stored on our servers. It cannot be undone.\n\n" +
+                  "Records on THIS device are NOT deleted — they stay until you clear the app.\n\n" +
+                  "Export your data first if you have not already. Cancel now to do that."
+                )) return;
+
+                // Typed confirmation, not a second tap. A destructive action
+                // reached by muscle memory is not a decision.
+                const typed = prompt('Type DELETE to confirm. This cannot be undone.');
+                if (typed !== "DELETE") return showToast("Not deleted.");
+
+                showToast("Deleting your account…");
+                const { error } = await deleteAccount();
+                if (error) return showToast(error.message);
+                showToast("Account deleted. Your device records are still here.");
+                setScreen("home");
+              }}>
+                <Trash2 size={20} color="#C0392B" />
+                <div style={{ flex: 1 }}>
+                  <p style={{ ...S.settingsRowLabel, color: "#C0392B" }}>Delete Account</p>
+                  <p style={S.settingsRowSub}>Erase your account and everything stored on our servers. Records on this device stay.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* APP INFO */}
         <div style={S.settingsSection}>
           <p style={S.settingsSectionTitle}>App Information</p>
@@ -2542,10 +3003,14 @@ function AccountScreen({ ctx }) {
         <button 
           style={{ ...S.ghostBtn, color: "#C0392B", borderColor: "#FDECEA", marginTop: 12, borderStyle: "dashed" }}
           onClick={() => {
-            if (confirm("🚨 FACTORY RESET: This will permanently delete all businesses, sales, and inventory data. This cannot be undone. Continue?")) {
-              localStorage.clear();
-              window.location.reload();
+            if (!confirm("🚨 FACTORY RESET: This will permanently delete all businesses, sales, and inventory data. This cannot be undone. Continue?")) return;
+            // Last chance to walk away with a copy, including the pre-upgrade one.
+            if (readSnapshot() && confirm("Download a copy of your data before erasing it?")) {
+              downloadSnapshot();
             }
+            if (!confirm("Type-free final check: erase everything on this device now?")) return;
+            localStorage.clear();
+            window.location.reload();
           }}
         >
           Wipe All Data & Reset App

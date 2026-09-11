@@ -8,12 +8,38 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#2C1810" />
-    <title>BizTrack</title>
+    <title>BizTrack — Inventory, Sales &amp; Profit</title>
+
+    <!--
+      Link preview tags. The distribution plan is direct conversations, and in
+      this market that means WhatsApp — which builds its preview card entirely
+      from Open Graph. Without these a shared link is a bare URL, which is
+      exactly the thing people do not tap.
+
+      og:image is an absolute URL on purpose: WhatsApp and Facebook fetch it
+      from their own servers, where a relative path means nothing.
+    -->
+    <meta name="description" content="Track your stock, record every sale, and see what you actually made. BizTrack works offline, so it keeps up on a slow connection." />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="BizTrack" />
+    <meta property="og:url" content="https://biztrack.store/" />
+    <meta property="og:title" content="BizTrack — know what your business is really making" />
+    <meta property="og:description" content="Track your stock, record every sale, and see real profit — not just money coming in. Works offline, on the phone you already have." />
+    <meta property="og:image" content="https://biztrack.store/pwa-512x512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="BizTrack" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="BizTrack — know what your business is really making" />
+    <meta name="twitter:description" content="Track your stock, record every sale, and see real profit. Works offline." />
+    <meta name="twitter:image" content="https://biztrack.store/pwa-512x512.png" />
     
     <!-- Instant Theme Detection -->
     <script>
       (function() {
-        const storage = localStorage.getItem('biztrack-storage');
+        const storage = localStorage.getItem('biztrack-storage-v3');
         if (storage) {
           try {
             const isDark = JSON.parse(storage).state.isDarkMode;
@@ -52,8 +78,14 @@
 
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <script type="text/javascript">
+      // The CDN is unreachable offline -- which for a PWA is a normal state, not
+      // an edge case -- so guard the init instead of throwing on every load.
       (function(){
-          emailjs.init({ publicKey: "dnWW8IiQzni2_D7eN" });
+        if (typeof emailjs === "undefined") {
+          console.warn("[BizTrack] EmailJS unavailable; PIN reset by email is disabled.");
+          return;
+        }
+        emailjs.init({ publicKey: "dnWW8IiQzni2_D7eN" });
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
