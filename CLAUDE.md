@@ -29,7 +29,7 @@ spins a loading skeleton when the network drops.
 | 0 — Stabilise | ✅ Done. Install prompt, hook-order crash, data validation, honest security copy. |
 | 1 — Ledger data model | ✅ Done. Integer money, stock ledger, per-entity store, legacy migration. |
 | 2 — Supabase | ✅ Done, 8 Sep 2026. Schema applied to the live project, RLS verified against it, Google sign-in working end to end. |
-| 3 — Public launch | 🟡 Mostly built. Error tracking, privacy policy, terms, consent, account deletion, notifications and analytics all landed. Remaining: custom SMTP, a filled-in legal entity, deployed Edge Functions. |
+| 3 — Public launch | ✅ Shipped 11–13 Sep 2026. Live at **biztrack.store**. Accounts, Google sign-in, email codes, password reset, branded email, legal documents, analytics, notifications — all deployed and verified end to end. What remains is not engineering: getting the two existing users onto accounts, and a lawyer reading the documents before money changes hands. |
 
 **The schema blocker is gone.** It was applied on 8 September and every table
 answers. What now stands between this and paying users is the list at the end
@@ -193,10 +193,14 @@ key instead, so the two are distinguishable without writing a single row. A
 *read* probe cannot tell them apart — an empty table and a fully protected one
 both return `[]`.
 
-**Not proven:** the three Edge Functions (`notify`, `unsubscribe`,
-`delete-account`) were written with no local Postgres, Docker or Deno on the
-machine, so that TypeScript has never executed and none of it is deployed.
-Email delivery through Brevo is entirely untested.
+**Proven 11 Sep 2026, against the live project:** all four Edge Functions
+(`notify`, `unsubscribe`, `delete-account`, `send-email`) are deployed and
+have executed. `notify` rejects a bad secret and sends with a good one;
+`delete-account` refuses an unauthenticated call; `unsubscribe` reaches its
+RPC and answers correctly; `send-email` refuses an unsigned request and sends
+on a valid signature. Email through Brevo is delivering: signup confirmation,
+password reset and sign-in notices all observed as requests → delivered →
+opened in Brevo's event log.
 
 Also unverified: whether `item_stock` actually has `security_invoker` on. Every
 table is empty, so a leaking view and a working one look identical from
@@ -213,11 +217,14 @@ outside. Query 2 of `rls-check.sql` answers it from inside.
    this worse, not better. New screens went to their own files, but the settings
    rows, consent gate and claim wiring all landed in App.jsx. State ownership is
    settled, so the split is still safe; there is just more of it.
-3. **Bundle is 917 KB** (262 KB gzipped), up from 859 KB: supabase-js is ~209 KB
-   of it and the 8 September work added ~58 KB more. On a low-end Android over
-   slow data this is a real cost, and it is now the largest single lever on the
-   experience of the device these users actually own. Code-split the backend and
-   Recharts before launch.
+3. ~~Bundle is 917 KB.~~ **Done 11 Sep.** Recharts (340 KB — a third of the
+   app) is lazy behind `Suspense` in `ProfitChart.jsx`, and vendor code is split
+   into react / supabase / icons / store chunks. First load is now **580 KB
+   (166 KB gzipped)**, down from 920 KB / 264 KB. The vendor split matters most
+   on the loads *after* an update: a release invalidates a 46 KB app chunk
+   instead of a 264 KB monolith. The chart chunk is still precached by the
+   service worker on purpose — this is offline-first, and someone opening
+   Analytics with no signal should still see their chart.
 
 ---
 
@@ -472,3 +479,110 @@ URL at all. Custom domains are exempt, which is one more reason to finish
 
 Measured on the branch preview: the bundle is **920 KB**. That is the number the
 code-splitting work has to move.
+
+---
+
+## Session log — 11–13 September 2026
+
+The launch. Everything below was verified against the live services, not
+inferred — mostly by probing from outside, because that is the only check that
+cannot be fooled by a dashboard that says the right thing.
+
+### It is live
+
+**https://biztrack.store** — apex canonical, `www` redirects to it, TLS issued,
+serving the same build as `biz-track-nine.vercel.app`.
+
+Both origins matter and they are NOT interchangeable. localStorage is
+per-origin, so the two existing users' books live at the vercel.app address
+until they have accounts. Sending them to `biztrack.store` before they sync
+shows them an empty app, which is indistinguishable from losing everything.
+
+### Email, and why it is not SMTP
+
+Supabase Auth sends through a **Send Email Hook** (`supabase/functions/
+send-email`), not SMTP. That is deliberate and hard-won: Supabase's own SMTP
+client returned `500 Error sending recovery email` against Brevo while the
+*identical* host, port, username, password and sender authenticated and sent
+fine from outside it. The fault was inside Supabase's SMTP path. The Brevo API
+was already proven, so the hook routes around it.
+
+Two things that bought beyond unblocking delivery: the five branded templates
+now render from `send-email/templates.ts` in the repo rather than being pasted
+into five dashboard tabs nobody can diff, and every auth email carries the
+numeric code beside its button.
+
+The hook verifies a **standard-webhooks HMAC signature** on every request,
+constant-time, rejecting anything older than five minutes. This is not
+optional: the endpoint sends as a DKIM- and SPF-passing BizTrack address, so an
+open one would be a phishing gift aimed at users whose only business records
+are in this app.
+
+`no-reply@biztrack.store` sends; `Reply-To` is `hello@biztrack.store`, because
+someone locked out of their books will hit reply and a bounce at that moment is
+the worst possible answer.
+
+### What the dashboards got wrong
+
+Worth recording, because two of these cost real time:
+
+- Brevo reported `authenticated: false` while its own API said every DNS record
+  was `ok: true`. The records had been right for a while; Brevo simply had not
+  re-checked. `PUT /v3/senders/domains/{domain}/authenticate` fixed it in one
+  call.
+- Brevo's SMTP panel showed "Currently Unavailable" while `GET /v3/account`
+  reported `relay.enabled: true` with the host, port and login. The panel had
+  failed to load, nothing more.
+- Vercel's env vars were half-set: only `VITE_SUPABASE_URL`, Production only.
+  Since `isBackendConfigured = Boolean(url && anonKey)`, production would have
+  failed too.
+
+The lesson that generalises: **verify from outside, in the built artefact.**
+`curl -s <deployment>/assets/index-*.js | grep -q ufyyurmekegbzkqjisdb` is worth
+more than any settings page.
+
+### Bugs found by a real person, not by tests
+
+Three, all in the signup flow, all mine, all invisible to `npm test`:
+
+1. The Terms and Privacy links were inside the consent `<label>`, so tapping
+   them toggled the checkbox instead of opening the document.
+2. Fixing that exposed a second: Google sign-in is gated on that checkbox, and
+   the accidental toggling had been satisfying the gate. With the links fixed
+   the button silently refused, with the reason in small red text above the
+   fold. The gate is right; making it invisible was not.
+3. Password recovery issues an 8-digit code; the verify field had
+   `maxLength={6}` and sliced input to 6. The last two digits were discarded as
+   the user typed, so the code could never be entered at all — on the screen
+   someone reaches when locked out.
+
+All three shipped past a green test suite. Keep sending real-user reports;
+they are worth more than anything curl can prove.
+
+### Notifications are scheduled
+
+`pg_cron` + `pg_net`, three jobs, secret in Vault rather than in the job bodies:
+
+| Job | Schedule | Purpose |
+|---|---|---|
+| `biztrack-billing` | `0 7 * * *` | Trial warnings at 7/3/1 days, then trial-ended |
+| `biztrack-weekly` | `0 7 * * 1` | Low stock + weekly summary |
+| `biztrack-drain` | `*/15 * * * *` | Sends whatever is queued |
+
+Without these the 30-day trial simply expires and the app goes read-only with
+no warning — which is the entire trial-to-paid path. `cron.job` shows what is
+scheduled; `cron.job_run_details` shows what actually ran. Check the second.
+
+### Still open
+
+1. **The two existing users have never signed up.** Own phones,
+   `biz-track-nine.vercel.app`, Google sign-in. Analytics and crash capture are
+   live, so this is the step that starts producing real information.
+2. **Brevo API key rotation.** It and the SMTP key were pasted into a session
+   transcript. The SMTP key is now unused — the hook replaced it — so it can
+   simply be deleted.
+3. **Test accounts** `arreyewube273+hooktest@gmail.com` and possibly
+   `otakufever003@gmail.com` are real rows and will muddy early numbers.
+4. **A lawyer** on governing law, the liability cap and VAT before taking money.
+5. **App.jsx is ~3,100 lines.** Still the largest structural debt, and unlike
+   the bundle it costs the maintainer rather than the user.
