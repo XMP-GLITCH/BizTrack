@@ -27,6 +27,41 @@ import { supabase, isBackendConfigured } from "./supabase.js";
 /** Written once, before the first sync ever touches this device's books. */
 export const PRE_CLAIM_KEY = "biztrack-pre-claim-backup";
 
+/**
+ * Remembers that this device already answered, per account.
+ *
+ * Without it the answer lived only in React state, and the next launch decided
+ * whether to ask again by checking whether a push had completed. Anyone who
+ * closed the app straight after tapping, or was offline, or whose first sync
+ * had not finished yet, was asked the same question over and over -- on the
+ * screen that talks about their books being backed up, which is exactly where
+ * repetition reads as "it did not work".
+ *
+ * Keyed by user so a second account on the same phone is still asked once.
+ */
+const answeredKey = (userId) => `biztrack-claim-answered:${userId}`;
+
+export function hasAnsweredClaim(userId) {
+  if (!userId) return false;
+  try {
+    return localStorage.getItem(answeredKey(userId)) !== null;
+  } catch {
+    // Storage unavailable. Returning false asks again, which is the safe
+    // direction: asking twice is annoying, skipping the backup is not.
+    return false;
+  }
+}
+
+export function rememberClaimAnswer(userId, strategy) {
+  if (!userId) return;
+  try {
+    localStorage.setItem(answeredKey(userId), JSON.stringify({
+      strategy,
+      answeredAt: new Date().toISOString(),
+    }));
+  } catch { /* asking again is survivable; failing to claim is not */ }
+}
+
 /** Counts for the copy on this device. Cheap, and no network. */
 export function summarizeLocal(businesses) {
   const list = businesses || [];

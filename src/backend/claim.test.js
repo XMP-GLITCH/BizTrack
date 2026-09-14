@@ -21,6 +21,7 @@ globalThis.localStorage = {
 
 const {
   summarizeLocal, savePreClaimBackup, readPreClaimBackup, inspectRemote, PRE_CLAIM_KEY,
+  hasAnsweredClaim, rememberClaimAnswer,
 } = await import("./claim.js");
 
 const biz = (over = {}) => ({
@@ -104,4 +105,45 @@ test("an unreachable backend reports UNKNOWN, never 'empty'", async () => {
   // is empty", the claim prompt would offer to replace real books with
   // nothing. With no credentials configured there is no backend to ask.
   assert.equal(await inspectRemote(), null);
+});
+
+test("an answered claim stays answered across launches", () => {
+  // The bug this covers: the answer used to live only in React state, and the
+  // next launch decided whether to re-ask by checking whether a push had
+  // completed. Anyone who answered and then closed the app, or was offline,
+  // got the same screen again -- on the screen about their books being backed
+  // up, where repetition reads as "it did not work".
+  mem.clear();
+  const uid = "user-1";
+  assert.equal(hasAnsweredClaim(uid), false);
+  rememberClaimAnswer(uid, "merge");
+  assert.equal(hasAnsweredClaim(uid), true);
+});
+
+test("the answer is per account, so a second user is still asked", () => {
+  mem.clear();
+  rememberClaimAnswer("user-1", "merge");
+  assert.equal(hasAnsweredClaim("user-1"), true);
+  assert.equal(hasAnsweredClaim("user-2"), false, "a different account gets its own question");
+});
+
+test("no user id means not answered, never a silent skip", () => {
+  mem.clear();
+  assert.equal(hasAnsweredClaim(null), false);
+  assert.equal(hasAnsweredClaim(undefined), false);
+  rememberClaimAnswer(null, "merge"); // must not throw or write a junk key
+  assert.equal(mem.size, 0);
+});
+
+test("unreadable storage asks again rather than skipping the backup", () => {
+  // Asking twice is annoying. Silently skipping the one prompt that gets
+  // someone's books onto the server is not, so the failure leans to asking.
+  mem.clear();
+  const real = globalThis.localStorage.getItem;
+  globalThis.localStorage.getItem = () => { throw new Error("SecurityError"); };
+  try {
+    assert.equal(hasAnsweredClaim("user-1"), false);
+  } finally {
+    globalThis.localStorage.getItem = real;
+  }
 });

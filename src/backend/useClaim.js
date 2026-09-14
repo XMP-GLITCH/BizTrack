@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useStore } from "../store/useStore.js";
 import { isBackendConfigured } from "./supabase.js";
-import { inspectRemote, savePreClaimBackup, summarizeLocal } from "./claim.js";
+import {
+  hasAnsweredClaim, inspectRemote, rememberClaimAnswer, savePreClaimBackup, summarizeLocal,
+} from "./claim.js";
 
 /**
  * Decides whether this device needs to be asked before its books meet an
@@ -38,6 +40,15 @@ export function useClaim(userId) {
     // first paint on a low-end phone, and it keeps setState out of the effect
     // body where it would cascade renders.
     const timer = setTimeout(async () => {
+      // Asked and answered already. Checked BEFORE the push cursor, because
+      // the cursor only tells us whether a sync has finished -- and someone who
+      // answered, then closed the app or lost signal before the first push
+      // completed, would otherwise be asked the same question every launch.
+      if (hasAnsweredClaim(userId)) {
+        if (!cancelled) setState("not-needed");
+        return;
+      }
+
       const { businesses, lastPushedAt } = useStore.getState();
       const localSummary = summarizeLocal(businesses);
 
@@ -86,9 +97,14 @@ export function useClaim(userId) {
       resetSyncCursors();
     }
 
+    // Recorded before the sync runs, not after. The push may fail, be offline,
+    // or never finish -- none of which should mean asking again. The question
+    // was answered; the sync is a separate concern that retries on its own.
+    rememberClaimAnswer(userId, strategy);
+
     setState("resolved");
     return { ok: true };
-  }, []);
+  }, [userId]);
 
   return {
     /** True while the user still has to choose. The sync loop must wait. */
