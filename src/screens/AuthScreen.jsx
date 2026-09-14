@@ -140,10 +140,24 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
           // An unconfirmed address is not really an error, it is an unfinished
           // sign-up. Send them to the code instead of a dead end.
           if (String(err.message || "").toLowerCase().includes("email not confirmed")) {
+            // Send a FRESH code rather than pointing at one that may not exist.
+            //
+            // This used to say "enter the code we sent you" and send nothing,
+            // which is a dead end for the person most likely to arrive here:
+            // someone whose original email never came, or came so long ago the
+            // code has expired. They would face a screen demanding a code they
+            // do not have, with no way forward.
             setPendingType("signup");
             setCode("");
             go("verify");
-            setNotice("Confirm your email first — enter the code we sent you.");
+
+            const { error: resendErr } = await resendConfirmation(email);
+            if (resendErr) {
+              setError(describeAuthError(resendErr));
+            } else {
+              setLastSentAt(Date.now());
+              setNotice("Your email isn't confirmed yet — we've just sent you a new code.");
+            }
           } else {
             setError(describeAuthError(err));
           }
