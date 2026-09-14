@@ -151,6 +151,29 @@ export async function sendPasswordReset(email) {
   });
 }
 
+/**
+ * Record that this user accepted the legal documents.
+ *
+ * Needed because consent cannot be collected reliably on the sign-in screen.
+ * OAuth makes no distinction between signing in and signing up -- tapping
+ * "Continue with Google" creates the account if none exists -- so a brand-new
+ * user coming through the sign-in path got an account without ever seeing the
+ * checkbox. That is not a hypothetical: it is how the first real user arrived,
+ * and her metadata carries no acceptance at all.
+ *
+ * Writing it AFTER authentication is the only place that catches every route
+ * in, which is why the gate lives there rather than on the form.
+ */
+export async function recordLegalAcceptance(version) {
+  if (!isBackendConfigured) return { error: null };
+  return supabase.auth.updateUser({
+    data: {
+      accepted_legal_version: version,
+      accepted_legal_at: new Date().toISOString(),
+    },
+  });
+}
+
 export async function signOut() {
   if (!isBackendConfigured) return { error: null };
   return supabase.auth.signOut();
@@ -195,6 +218,33 @@ export async function deleteAccount() {
   } catch (err) {
     return { error: { message: `Could not reach the server: ${err.message}` } };
   }
+}
+
+/**
+ * Has anyone ever signed in on this device?
+ *
+ * Decides whether the auth screen opens on "Create your account" or "Welcome
+ * back". A first-time visitor was being shown a sign-in form, which is the
+ * wrong question to ask someone who has no account -- and it pushed them
+ * towards "Continue with Google" from the sign-in tab, the one route that
+ * created an account without showing them the terms.
+ */
+const SEEN_KEY = "biztrack-has-signed-in";
+
+export function hasSignedInBefore() {
+  try {
+    return localStorage.getItem(SEEN_KEY) === "1";
+  } catch {
+    // Storage unavailable: assume returning, because showing a signup form to
+    // someone who already has an account is the more confusing mistake.
+    return true;
+  }
+}
+
+export function rememberSignedIn() {
+  try {
+    localStorage.setItem(SEEN_KEY, "1");
+  } catch { /* the default is survivable */ }
 }
 
 export async function getSession() {

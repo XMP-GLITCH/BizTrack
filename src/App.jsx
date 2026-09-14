@@ -9,7 +9,7 @@ import { isBackendConfigured } from "./backend/supabase.js";
 import { useAuth } from "./backend/useAuth.js";
 import { useSync } from "./backend/useSync.js";
 import { useClaim } from "./backend/useClaim.js";
-import { signOut, deleteAccount } from "./backend/auth.js";
+import { signOut, deleteAccount, rememberSignedIn } from "./backend/auth.js";
 import AuthScreen from "./screens/AuthScreen.jsx";
 import LegalScreen from "./screens/LegalScreen.jsx";
 // Recharts is the biggest dependency after supabase-js and is needed on one
@@ -17,7 +17,8 @@ import LegalScreen from "./screens/LegalScreen.jsx";
 // Android over metered data is the load that actually costs the user money.
 const ProfitChart = lazy(() => import("./screens/ProfitChart.jsx"));
 import ClaimScreen from "./screens/ClaimScreen.jsx";
-import { DOCUMENTS } from "./legal/documents.js";
+import ConsentScreen from "./screens/ConsentScreen.jsx";
+import { DOCUMENTS, LEGAL_VERSION } from "./legal/documents.js";
 import { track, startAnalytics, setAppVersion, getConsent, setConsent, flush as flushAnalytics } from "./analytics/analytics.js";
 import { installErrorCapture } from "./analytics/errors.js";
 import { useRegisterSW } from "virtual:pwa-register/react";
@@ -384,6 +385,7 @@ export default function BizTrack() {
   // someone as signed in against a token that expired days ago.
   const auth = useAuth();
   const [analyticsConsent, setAnalyticsConsentState] = useState(() => getConsent());
+  const [justAccepted, setJustAccepted] = useState(false);
   const claim = useClaim(auth.userId);
   // Held until the user has said what should happen to books already on this
   // device. Pushing first and asking afterwards would make the question moot.
@@ -516,6 +518,10 @@ export default function BizTrack() {
   // Screen views. `screen` is the only dependency: this records navigation,
   // not re-renders.
   useEffect(() => { track("screen.view", { screen }); }, [screen]);
+
+  // So the auth screen opens on "Welcome back" next time rather than asking a
+  // returning user to create an account they already have.
+  useEffect(() => { if (auth.session) rememberSignedIn(); }, [auth.session]);
   const [activeBizId, setActiveBizId] = useState(null);
   const [bizTab, setBizTab] = useState("overview");
   const [modal, setModal] = useState(null); // null | "addBiz" | "addItem" | "restock" | "addSale" | "editBiz" | "deleteBiz" | "toast"
@@ -699,6 +705,29 @@ export default function BizTrack() {
         styles={S}
         hasLocalData={businesses.length > 0}
         onSkip={() => setSkippedAuth(true)}
+      />
+    );
+  }
+
+  // Consent, checked after authentication because the signup checkbox cannot
+  // catch every route in. OAuth does not distinguish signing in from signing
+  // up, so "Continue with Google" from the sign-in tab created accounts that
+  // never saw the terms — which is how the first real user arrived.
+  //
+  // Comparing against LEGAL_VERSION rather than merely "is it set" is what
+  // makes it possible to change the documents materially and ask again.
+  if (
+    isBackendConfigured &&
+    auth.session &&
+    !justAccepted &&
+    auth.session.user?.user_metadata?.accepted_legal_version !== LEGAL_VERSION
+  ) {
+    return (
+      <ConsentScreen
+        styles={S}
+        email={auth.email}
+        onAccepted={() => setJustAccepted(true)}
+        onSignOut={signOutOfAccount}
       />
     );
   }

@@ -3,7 +3,7 @@ import { Store, Loader, Check } from "lucide-react";
 
 import {
   signUp, signIn, sendPasswordReset, describeAuthError, signInWithGoogle,
-  verifyEmailCode, resendConfirmation, setNewPassword,
+  verifyEmailCode, resendConfirmation, setNewPassword, hasSignedInBefore,
 } from "../backend/auth.js";
 import { DOCUMENTS, LEGAL_VERSION } from "../legal/documents.js";
 import LegalScreen from "./LegalScreen.jsx";
@@ -46,7 +46,13 @@ const RESEND_COOLDOWN_MS = 60_000;
  */
 export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
   // signin | signup | reset | verify | newpassword
-  const [mode, setMode] = useState("signin");
+  //
+  // A device that has never had a session almost certainly belongs to someone
+  // without an account, so it opens on "Create your account". Showing a
+  // sign-in form first asked the wrong question and nudged new users towards
+  // Google from the sign-in tab -- the one path that made an account without
+  // showing them the terms.
+  const [mode, setMode] = useState(() => (hasSignedInBefore() ? "signin" : "signup"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
