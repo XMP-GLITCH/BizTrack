@@ -70,12 +70,28 @@ interface ShellOptions {
   body: string;
   ctaLabel?: string;
   ctaUrl?: string;
+  /**
+   * "button" is the filled primary action. "link" demotes it to plain text.
+   *
+   * Auth emails use "link", because the code beside it is the more reliable
+   * path: a browser and an installed PWA are separate contexts -- always on
+   * iOS, and on Android whenever the link opens a different browser than the
+   * one the app was installed from. A session established by the link lands
+   * somewhere the user is not looking, and they return to the app still
+   * signed out. Two competing buttons also make the reader choose, which is
+   * a cost paid by someone who just wants into their books.
+   */
+  ctaVariant?: "button" | "link";
   footerNote?: string;
   unsubscribeUrl?: string;
 }
 
 export function shell(o: ShellOptions): string {
-  const cta = o.ctaLabel && o.ctaUrl
+  const cta = o.ctaLabel && o.ctaUrl && o.ctaVariant === "link"
+    ? `<tr><td align="center" style="padding:14px 0 2px;">
+         <a href="${o.ctaUrl}" target="_blank" style="font-family:${SANS};font-size:13px;color:${MUTED};text-decoration:underline;">${o.ctaLabel}</a>
+       </td></tr>`
+    : o.ctaLabel && o.ctaUrl
     ? `<tr><td align="center" style="padding:6px 0 4px;">
          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
            <td align="center" bgcolor="${BROWN}" style="border-radius:12px;">

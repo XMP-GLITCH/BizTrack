@@ -66,9 +66,17 @@ function codeBlock(token: string, caption = "Or enter this code in the app:"): s
 }
 
 /**
- * `shell()` has no slot for the code block, so it is spliced in ahead of the
- * footer row. Crude, but it keeps one shell shared with the notification
- * emails -- two shells would drift apart within a month.
+ * The code is spliced in directly under the heading and body, ABOVE the link,
+ * because it is the action that always works.
+ *
+ * A browser and an installed PWA are separate contexts -- always on iOS, and
+ * on Android whenever the link opens a different browser than the one the app
+ * was installed from. A session created by the link lands in a context the
+ * user is not looking at, and they come back to the app still signed out. The
+ * code is spent inside the app they already have open, so it cannot miss.
+ *
+ * Done by splicing rather than by a shell slot so one shell stays shared with
+ * the notification emails; two shells would drift apart within a month.
  */
 function withCode(html: string, token: string, caption?: string): string {
   const marker = `        ${""}`;
@@ -96,10 +104,11 @@ export function render(
           body:
             p("Welcome to BizTrack. Confirm this address and your inventory, sales and profit start backing up — so your books survive a lost, stolen or replaced phone.") +
             p("This is the last step."),
-          ctaLabel: "Confirm my email",
+          ctaLabel: "Or confirm in a browser instead",
           ctaUrl: url,
+          ctaVariant: "link",
           footerNote: "The link and the code both expire after a while. If yours has, sign in again and a fresh one is sent.",
-        }), d.token),
+        }), d.token, "Enter this code in the app:"),
       };
 
     case "recovery":
@@ -111,10 +120,11 @@ export function render(
           body:
             p("Someone asked to reset the password on this BizTrack account. If that was you, choose a new one now.") +
             p("Your books are untouched either way — nothing is deleted, and nothing is lost if you ignore this."),
-          ctaLabel: "Choose a new password",
+          ctaLabel: "Or reset in a browser instead",
           ctaUrl: url,
+          ctaVariant: "link",
           footerNote: "Only the newest reset link works. Asking again replaces the one above.",
-        }), d.token),
+        }), d.token, "Enter this code in the app:"),
       };
 
     case "magiclink":
@@ -124,10 +134,11 @@ export function render(
           preheader: "Your sign-in link and code for BizTrack.",
           heading: "Sign in to BizTrack",
           body: p("Here is your sign-in link. It works once, and only from this email."),
-          ctaLabel: "Sign in",
+          ctaLabel: "Or sign in through a browser",
           ctaUrl: url,
+          ctaVariant: "link",
           footerNote: "If the button opens a browser where you are not signed in, return to the app and enter the code above instead.",
-        }), d.token),
+        }), d.token, "Enter this code in the app:"),
       };
 
     case "email_change":
@@ -139,10 +150,11 @@ export function render(
           body:
             p(`You asked to move your BizTrack account to <strong style="color:${COLORS.BROWN};">${escapeHtml(userEmail)}</strong>. Confirm it to finish the change.`) +
             p("Until you do, your old address keeps working and nothing about your account changes."),
-          ctaLabel: "Confirm the change",
+          ctaLabel: "Or confirm in a browser instead",
           ctaUrl: url,
+          ctaVariant: "link",
           footerNote: "Didn't request this? Ignore it, then change your password — someone may know your current one.",
-        }), d.token),
+        }), d.token, "Enter this code in the app:"),
       };
 
     case "reauthentication":
