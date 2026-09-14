@@ -570,10 +570,29 @@ they are worth more than anything curl can prove.
 | `biztrack-drain` | `*/15 * * * *` | Sends whatever is queued |
 
 Without these the 30-day trial simply expires and the app goes read-only with
-no warning — which is the entire trial-to-paid path. `cron.job` shows what is
-scheduled; `cron.job_run_details` shows what actually ran. Check the second.
+no warning — which is the entire trial-to-paid path.
+
+**Verified running, 14 Sep 2026.** `cron.job` shows what is *scheduled*;
+`cron.job_run_details` shows what actually *ran* — a job can be registered and
+still fail every time, usually because `pg_net` cannot reach the function or
+the Vault lookup returns null and the secret header goes out empty. Check the
+second, and note the column trap: `job_run_details` has `jobid`, not
+`jobname`, so it needs a join:
+
+```sql
+select j.jobname, d.status, d.return_message, d.start_time
+from cron.job_run_details d
+join cron.job j on j.jobid = d.jobid
+order by d.start_time desc limit 15;
+```
+
+That, together with the Brevo event log showing `requests → delivered`, is the
+whole chain proven: cron fires → `notify` runs → Brevo delivers.
 
 ### Still open
+
+Nothing technical. Every part of the system has been verified against the live
+services. What remains is product work and housekeeping:
 
 1. **The two existing users have never signed up.** Own phones,
    `biz-track-nine.vercel.app`, Google sign-in. Analytics and crash capture are
