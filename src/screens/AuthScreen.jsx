@@ -124,7 +124,25 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
 
       } else if (mode === "signup") {
         const { data, error: err } = await signUp({ email, password, displayName: name, acceptedLegalVersion: LEGAL_VERSION });
-        if (err) setError(describeAuthError(err));
+
+        // Supabase deliberately does NOT reveal that an address is already
+        // registered: it returns 200, a decoy user id, a confirmation_sent_at
+        // that is not true, and no error -- so an attacker cannot discover who
+        // has an account. The one honest signal is an empty identities array.
+        //
+        // Without this check the app believed the signup and sent the user to
+        // wait for a code that was never going to arrive. That is where a real
+        // user got stuck: she already had an account from signing in with
+        // Google, tried to create one with the same address, and sat on the
+        // verify screen indefinitely.
+        const alreadyRegistered =
+          !err && Array.isArray(data?.user?.identities) && data.user.identities.length === 0;
+
+        if (alreadyRegistered) {
+          setPassword("");
+          go("signin");
+          setNotice("You already have an account with this email. Sign in instead — if you used Google before, tap Continue with Google.");
+        } else if (err) setError(describeAuthError(err));
         else if (!data?.session) {
           // Confirmation is on. Go straight to the code rather than telling
           // them to check their email and leaving them on a dead form.
