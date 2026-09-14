@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test \"src/**/*.test.js\""
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
     "@tailwindcss/vite": "^4.2.4",
     "clsx": "^2.1.1",
     "lucide-react": "^1.14.0",

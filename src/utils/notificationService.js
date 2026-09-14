@@ -9,7 +9,7 @@ export async function requestNotificationPermission() {
   
   try {
     return await Notification.requestPermission();
-  } catch (e) {
+  } catch {
     return 'denied';
   }
 }
