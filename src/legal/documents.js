@@ -35,7 +35,7 @@ export const ENTITY = {
   country: "Cameroon",
 };
 
-export const LAST_UPDATED = "11 September 2026";
+export const LAST_UPDATED = "14 September 2026";
 
 const P = (...paragraphs) => paragraphs;
 
@@ -67,7 +67,7 @@ export const PRIVACY_POLICY = {
       body: P(
         "Without an account, your records stay on your device and are not sent anywhere.",
         "With an account, your records are copied to our database so you can reach them from another device and recover them if your phone is lost. That database is operated by Supabase, and it is hosted outside Cameroon. Sending your data to us therefore involves a transfer of personal data abroad, which we ask you to consent to when you create an account.",
-        "The other companies that handle your data on our behalf, and only on our instructions, are: Supabase (database, authentication and hosting), Google (only if you choose to sign in with Google), and Brevo (sending the emails described below). We do not sell your data, and we do not share it for advertising.",
+        "The other companies that handle your data on our behalf, and only on our instructions, are: Supabase (database, authentication and hosting), Google (only if you choose to sign in with Google), Brevo (sending the emails described below), and PostHog (charting the usage data described below, if you agreed to share it). We do not sell your data, and we do not share it for advertising.",
       ),
     },
     {
@@ -93,7 +93,8 @@ export const PRIVACY_POLICY = {
         "BizTrack is in beta, and we need to know which parts work. If you agree, the app records which screens you open, which features you use, and details of any crash — including the error message and the part of the code it came from.",
         "We never collect your business data this way. Not your item names, not your prices, not your sales figures, not your customers, not your business names. The app checks every value against a list of what is allowed to leave your device, and anything that looks like an email address or a long number is removed before it is sent.",
         "We ask before collecting any of it, and nothing is collected until you say yes. You can change your mind at any time in Settings → Privacy; switching it off also deletes anything still waiting to be sent from your device.",
-        "This information is kept for 90 days and then deleted automatically. It is stored in our own database and is not shared with an analytics company.",
+        "This information is kept for 90 days in our own database and then deleted automatically.",
+        "We also send a copy to PostHog, a company that turns it into charts so we can see which parts of the app are used and which are breaking. They process it only on our instructions. They receive the same usage events described above — never your item names, prices, sales figures or customers — and they never receive it from your device: it goes from our servers to theirs, so nothing about PostHog is placed on your phone.",
       ),
     },
     {
@@ -256,4 +257,4 @@ export const DOCUMENTS = { privacy: PRIVACY_POLICY, terms: TERMS };
  * Compared against what the user accepted, so a cosmetic edit does not nag
  * everyone and a real change is not silently applied to them.
  */
-export const LEGAL_VERSION = "2026-09-11";
+export const LEGAL_VERSION = "2026-09-14";
