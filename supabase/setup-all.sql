@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- BizTrack — complete database setup.
+-- BizTrack: complete database setup.
 --
 -- Paste this whole file into the Supabase SQL Editor and press Run. It is the
 -- three files in supabase/migrations/ concatenated in order, unchanged.
@@ -864,7 +864,7 @@ comment on table public.analytics_events is
   'Usage telemetry only. Never business content: no item names, amounts, or customer data. Pruned after 90 days.';
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Verification — expect 8 tables, and rls_enabled = true on every one.
+-- Verification: expect 8 tables, and rls_enabled = true on every one.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 select

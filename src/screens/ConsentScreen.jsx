@@ -9,8 +9,8 @@ import LegalScreen from "./LegalScreen.jsx";
  * Consent, collected after authentication rather than on the form.
  *
  * The checkbox on the signup form could not do this job. OAuth draws no
- * distinction between signing in and signing up — "Continue with Google"
- * creates the account when none exists — so a new user arriving through the
+ * distinction between signing in and signing up: "Continue with Google"
+ * creates the account when none exists, so a new user arriving through the
  * sign-in path got an account without ever being shown the terms. That is how
  * the first real user arrived, and her account carries no acceptance.
  *
@@ -20,7 +20,7 @@ import LegalScreen from "./LegalScreen.jsx";
  * possible to change the documents materially and ask people again.
  *
  * There is no "skip". Accepting is the only way forward, and the honest
- * alternative — signing out — is offered plainly rather than hidden.
+ * alternative, signing out, is offered plainly rather than hidden.
  */
 export default function ConsentScreen({ styles: S, email, onAccepted, onSignOut }) {
   const [accepted, setAccepted] = useState(false);
@@ -44,14 +44,14 @@ export default function ConsentScreen({ styles: S, email, onAccepted, onSignOut 
       const { error: err } = await recordLegalAcceptance(LEGAL_VERSION);
       if (err) {
         // Offline is the normal case for these users, so it is described as a
-        // condition rather than a failure — and nothing is lost by retrying.
-        setError("Couldn't save that — check your connection and try again.");
+        // condition rather than a failure, and nothing is lost by retrying.
+        setError("Couldn't save that. Check your connection and try again.");
         setBusy(false);
         return;
       }
       onAccepted();
     } catch {
-      setError("Couldn't save that — check your connection and try again.");
+      setError("Couldn't save that. Check your connection and try again.");
       setBusy(false);
     }
   };
@@ -63,12 +63,12 @@ export default function ConsentScreen({ styles: S, email, onAccepted, onSignOut 
 
   return (
     <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
-      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }}>
-        <div style={{ background: "rgba(255,255,255,0.08)", width: 62, height: 62, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }} className="bt-focus">
+        <div style={{ background: "rgba(255,255,255,0.08)", width: 62, height: 62, borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
           <FileText size={30} color="#FAF8F4" />
         </div>
 
-        <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 24, marginBottom: 10 }}>
+        <h1 style={{ ...S.userName, color: "#FAF8F4", marginBottom: 10 }}>
           One thing before you start
         </h1>
 
@@ -104,7 +104,7 @@ export default function ConsentScreen({ styles: S, email, onAccepted, onSignOut 
         </label>
 
         {error && (
-          <p style={{ fontSize: 12, color: "#FF9B8A", fontWeight: 600, margin: "0 0 12px", lineHeight: 1.4 }}>{error}</p>
+          <p style={S.formErrorDark}>{error}</p>
         )}
 
         <button
@@ -124,7 +124,7 @@ export default function ConsentScreen({ styles: S, email, onAccepted, onSignOut 
           Sign out instead
         </button>
 
-        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: "8px 0 0", lineHeight: 1.4, textAlign: "center" }}>
+        <p style={{ fontSize: 11, color: "rgba(255,255,255,0.62)", margin: "8px 0 0", lineHeight: 1.45, textAlign: "center" }}>
           Signing out changes nothing on this phone. Your records stay exactly where they are.
         </p>
       </div>

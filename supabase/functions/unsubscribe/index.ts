@@ -1,7 +1,7 @@
 /**
  * Unsubscribe.
  *
- * Reached from an inbox, so there is no session and no JWT — deploy this one
+ * Reached from an inbox, so there is no session and no JWT, so deploy this one
  * with --no-verify-jwt. The token in the link is the whole credential, and it
  * is scoped so tightly that leaking it costs almost nothing: it can turn a
  * category off and do nothing else. It cannot read a profile, cannot reach a
@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
     return page("Something went wrong", "Try again in a moment, or change this in the app under Account.", false);
   }
 
-  // `false` means no profile carried that token — an old link, or one already
+  // `false` means no profile carried that token: an old link, or one already
   // rotated. Said plainly rather than pretending it worked.
   if (data !== true) {
     return page(
@@ -75,7 +75,7 @@ function page(heading: string, body: string, ok: boolean): Response {
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${heading} — BizTrack</title>
+<title>${heading} | BizTrack</title>
 </head>
 <body style="margin:0;background:#FAF8F4;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="max-width:460px;margin:0 auto;padding:64px 20px;">
@@ -89,7 +89,7 @@ function page(heading: string, body: string, ok: boolean): Response {
       <a href="${APP_URL}" style="display:inline-block;padding:13px 26px;border-radius:12px;background:#2C1810;color:#FAF8F4;text-decoration:none;font-size:15px;font-weight:700;">Open BizTrack</a>
     </div>
     <p style="margin:18px 4px 0;font-size:12px;color:#9B7B5E;line-height:1.6;">
-      Security emails — like a new sign-in to your account — are always sent, and cannot be turned off here.
+      Security emails, like a new sign-in to your account, are always sent, and cannot be turned off here.
     </p>
   </div>
 </body></html>`;

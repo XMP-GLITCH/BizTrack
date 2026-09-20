@@ -32,7 +32,7 @@ what can be exported.
 1. Create the account, then **Senders, Domains & Dedicated IPs → Domains** and
    add a domain you control.
 2. Add the **SPF and DKIM** records it gives you. Skip this and everything here
-   lands in Gmail spam regardless of how the emails look — and most of this
+   lands in Gmail spam regardless of how the emails look, and most of this
    audience is on Gmail.
 3. **SMTP & API → API Keys** → create one.
 
@@ -50,7 +50,7 @@ supabase secrets set \
   NOTIFY_SECRET="$(openssl rand -hex 32)"
 ```
 
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically — do
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically, so do
 not set them, and never put the service key anywhere near the client.
 
 Keep `NOTIFY_SECRET` where you can find it; cron needs it below.
@@ -139,14 +139,14 @@ curl -X POST "https://ufyyurmekegbzkqjisdb.supabase.co/functions/v1/notify?jobs=
 ```
 
 It returns `{ sent, failed, skipped, problems }`. To re-send the same
-notification while testing, delete the queue row — the unique key is doing its
+notification while testing, delete the queue row: the unique key is doing its
 job and will otherwise refuse a duplicate.
 
 ## Things worth knowing before this runs unattended
 
 **The `auth.sessions` trigger.** `enqueue_new_signin` fires inside the
 transaction that signs a user in. Its entire body is wrapped in an exception
-handler, so it can never raise and never block a sign-in — a missed
+handler, so it can never raise and never block a sign-in. A missed
 notification is acceptable, a user locked out of their own books is not. But
 Supabase owns that schema and may change it during a platform upgrade. If
 sign-in ever misbehaves after one, drop this first:
@@ -160,7 +160,7 @@ retried on every run forever. Retryable failures (429, 5xx) deliberately do not
 count against that budget, so a Brevo outage cannot silently exhaust it.
 
 **A week with no sales sends no summary.** A cheerful "0 XAF this week" is what
-teaches someone to filter your mail — and then they miss the trial warning too.
+teaches someone to filter your mail, and then they miss the trial warning too.
 
 **Security email cannot be unsubscribed.** "Someone signed into your account" is
 exactly what an attacker with inbox access would want to silence.
@@ -169,5 +169,5 @@ exactly what an attacker with inbox access would want to silence.
 
 The SQL and TypeScript here were written without a local Postgres, Docker or
 Deno available, so neither has been executed. The logic follows the schema and
-the existing domain rules, but expect ordinary first-run integration details —
+the existing domain rules, but expect ordinary first-run integration details,
 run the testing section above against one account before scheduling anything.

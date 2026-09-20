@@ -48,6 +48,43 @@ export function formatMoney(minor, currency) {
   }).format(toMajor(minor, cur));
 }
 
+/**
+ * The same string `formatMoney` produces, split into the currency unit and the
+ * digits, so a display-scale figure can set the unit quieter than the number.
+ *
+ * Why this exists at all: XAF writes its unit as the four-letter word "FCFA"
+ * rather than a one-character glyph, so at 36px the currency code is physically
+ * as wide as half the amount and competes with the number someone opened the
+ * app to see. Demoting it is ordinary financial typography; it just matters
+ * more for this currency than for "$".
+ *
+ * Built from `formatToParts` rather than a regex over the output. The unit is a
+ * prefix in en-US for all six currencies here, but that is a property of the
+ * locale data rather than a guarantee, and a regex looking for the first digit
+ * would silently mangle the first currency where it is not.
+ */
+export function formatMoneyParts(minor, currency) {
+  const cur = normalizeCurrency(currency);
+  const digits = exponentFor(cur);
+  const parts = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: cur,
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).formatToParts(toMajor(minor, cur));
+
+  const unit = parts.filter((p) => p.type === "currency").map((p) => p.value).join("");
+  // Whitespace literals exist only to separate the unit from the number; with
+  // the two rendered as separate elements they would show up as a double gap,
+  // and on a negative amount as "- 1,500".
+  const value = parts
+    .filter((p) => p.type !== "currency" && !(p.type === "literal" && /^\s+$/.test(p.value)))
+    .map((p) => p.value)
+    .join("");
+
+  return { unit, value };
+}
+
 /** Integer percentage, guarding the divide-by-zero that produced NaN% badges. */
 export function marginPercent(revenue, cost) {
   const r = Number(revenue) || 0;

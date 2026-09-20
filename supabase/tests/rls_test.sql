@@ -70,6 +70,34 @@ select t('ada can create her own business',
 select t('owner is auto-added as a member',
   (select count(*) from business_members where business_id = :sabibiz and user_id = :sabi) = 1);
 
+-- THE SHAPE THE CLIENT ACTUALLY SENDS, which is not the shape above.
+--
+-- `upsertAll` in src/backend/sync.js calls .upsert(..., { onConflict: "id" }),
+-- so PostgREST issues INSERT ... ON CONFLICT (id) DO UPDATE -- never a plain
+-- INSERT. PostgreSQL makes an upsert satisfy the SELECT and UPDATE policies as
+-- well as the INSERT one, applying SELECT's USING to the NEW row, and it does
+-- so EVEN WHEN NOTHING CONFLICTS.
+--
+-- Both of those policies used to route through is_business_member(), whose
+-- membership row is written by an AFTER INSERT trigger that has not fired at
+-- the moment the check runs. So a brand new business could never be upserted
+-- by anyone, and no account ever synced a single row, while every test above
+-- passed -- because every test above uses the plain form.
+--
+-- Asserted for a business that does NOT yet exist, since that is the case that
+-- was broken; the conflicting case was always fine.
+select t('sabi can UPSERT a brand new business (the shape the client sends)',
+  try_as(:sabi, format($q$insert into businesses (id, owner_id, name, currency)
+    values (%L, %L, 'Upsert Shop', 'XAF')
+    on conflict (id) do update set name = excluded.name$q$,
+    'aaaaaaaa-0000-0000-0000-00000000f001', :sabi)) = 'OK');
+
+select t('an upsert still cannot create a business owned by someone else',
+  try_as(:ada, format($q$insert into businesses (id, owner_id, name, currency)
+    values (%L, %L, 'Stolen', 'XAF')
+    on conflict (id) do update set name = excluded.name$q$,
+    'aaaaaaaa-0000-0000-0000-00000000f002', :sabi)) = '42501');
+
 select t('sabi can add an item to her business',
   try_as(:sabi, format('insert into items (id, business_id, name, unit_price) values (%L, %L, %L, 4500)',
     :sabiitem, :sabibiz, 'Bucket Hat')) = 'OK');

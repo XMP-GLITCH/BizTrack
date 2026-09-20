@@ -17,10 +17,10 @@ export default function LegalScreen({ styles: S, doc, onBack }) {
   if (!doc) return null;
 
   return (
-    <div style={S.screen}>
+    <div style={S.screen} className="bt-screen bt-prose">
       <div style={S.pageHeader}>
         <button style={S.backBtn} onClick={onBack} aria-label="Back">
-          <ArrowLeft size={24} />
+          <ArrowLeft size={22} />
         </button>
         <h2 style={S.pageTitle}>{doc.title}</h2>
         <div style={{ width: 32 }} />
@@ -39,7 +39,7 @@ export default function LegalScreen({ styles: S, doc, onBack }) {
 
         {doc.sections.map((section) => (
           <section key={section.heading} style={{ marginBottom: 24 }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px" }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 8px", letterSpacing: -0.1 }}>
               {section.heading}
             </h3>
             {section.body.map((paragraph, i) => (

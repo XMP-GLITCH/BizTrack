@@ -1,43 +1,181 @@
 @import "tailwindcss";
 
 @theme {
-  --color-warm-off-white: #FAF9F7;
-  --color-warm-surface: #FFFFFF;
-  --color-terracotta: #E27D60;
-  --color-sage: #85DCB;
-  --color-citron: #F9DA57;
-  --color-clementine: #FD9950;
-  --color-pomegranate: #DD1265;
-  --color-fuchsia: #B61571;
-  --color-violet: #6E5397;
-  --color-petrol: #0D8390;
-  --color-brown-sabi: #805b4a; /* From Sabi crochet inspiration */
-  
-  --font-serif: "Playfair Display", "DM Serif Display", serif;
-  --font-sans: "Inter", "DM Sans", sans-serif;
-
-  --shadow-soft: 0 4px 20px -2px rgba(100, 90, 80, 0.08);
+  /*
+   * Tailwind's theme layer, holding exactly one thing.
+   *
+   * There were eleven brand colours and a shadow here (terracotta, sage,
+   * citron, clementine, pomegranate, fuchsia, violet, petrol, brown-sabi, two
+   * warm neutrals). Not one of them was ever referenced: the app styles itself
+   * with inline style objects reading the tokens in :root below, and uses no
+   * Tailwind utility classes at all. They emitted dead custom properties into
+   * every build, and `--color-sage: #85DCB` was five hex digits, so it was not
+   * even a colour.
+   *
+   * Tailwind itself stays for its preflight, which is where the app gets
+   * `box-sizing: border-box` on everything. Every measurement in this file
+   * assumes that.
+   */
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 @layer base {
+  /*
+   * The palette, as tokens with measured contrast.
+   *
+   * Every ratio in a comment below was computed against the surface named, not
+   * estimated. 4.5:1 is the AA floor for body text; 3:1 is the floor for text
+   * at 24px, or 19px bold, and for the edges of controls.
+   *
+   * The rule this file now enforces: a colour that will ever be TEXT has a
+   * token, and that token clears 4.5:1 on both --bg-primary and --card-bg in
+   * both themes. Colours that are only ever FILLS -- the brand terracotta, the
+   * eight business identity colours -- are free, because nothing is read off
+   * them directly.
+   */
   :root {
+    /* ── fixed ─────────────────────────────────────────────────────────────
+       The only three colours in the system that are the same in both themes,
+       and they have to be, because what they sit on is not the page.
+
+       Two screens are dark whatever the theme: the "we couldn't open your
+       records" screen and onboarding. The summary card and the business hero
+       paint a colour of their own. Text on any of those was written as
+       --bg-primary, which is near-white in light mode and #1A0E0A in dark, so
+       in dark mode the onboarding headings and the Account name turned
+       near-black on near-black. A colour picked to contrast with the PAGE
+       cannot be reused on something that is not the page. */
+    --focus-ground: #2C1810;
+    --focus-ink: #FAF8F4;   /* 13.8:1 on --focus-ground */
+    --on-color: #FFFFFF;    /* text on a business colour, after heroTint() */
+
+    /* Feedback ON that ground. The sign-in, claim and consent screens each had
+       their own bare <p> in a hardcoded #FF9B8A, three copies of the same
+       literal, so a failed sign-in and a failed save looked like two different
+       classes of event. They get the same text/tint/edge trio as every other
+       semantic colour, with the tint as alpha over the ground rather than a
+       light-mode hex, for the same reason the dark theme's tints are. */
+    --danger-on-focus:  #FF9B8A;  /* 8.3:1 on --focus-ground */
+    --danger-on-focus-bg:     rgba(255, 155, 138, 0.12);
+    --danger-on-focus-border: rgba(255, 155, 138, 0.32);
+    --success-on-focus: #9BD4A0;  /* 9.9:1 on --focus-ground */
+    --success-on-focus-bg:     rgba(155, 212, 160, 0.12);
+    --success-on-focus-border: rgba(155, 212, 160, 0.32);
+
+    /* ── surfaces ──────────────────────────────────────────────────────── */
     --bg-primary: #FAF8F4;
-    --text-primary: #2C1810;
-    --text-secondary: #9B7B5E;
     --card-bg: #FFFFFF;
     --border-color: #E0D6C8;
-    --accent-color: #C17F5A;
     --status-bar-bg: #FAF8F4;
+
+    /* ── text ──────────────────────────────────────────────────────────── */
+    /* --text-secondary was #9B7B5E: 3.67:1 on the page and 3.90:1 on a card,
+       while carrying every cost line, date, item sub-label and settings
+       caption in the app. Same hue, two steps darker. */
+    --text-primary: #2C1810;   /* 15.90 page · 17.79 card */
+    --text-secondary: #7A5A42; /*  5.88 page ·  6.23 card */
+
+    /* ── accent ────────────────────────────────────────────────────────── */
+    /* Two tokens on purpose. The terracotta is the brand and stays a FILL --
+       nav pill, avatar, progress meter -- where contrast rules do not apply.
+       Written as text it measured 3.07:1, so anything READ in the accent uses
+       --accent-text instead. */
+    --accent-color: #C17F5A;
+    --accent-text: #A5603A;    /*  4.57 page ·  4.85 card */
+
+    /* ── semantic ──────────────────────────────────────────────────────── */
+    /* Always a trio: text, the tint it may sit on, and that tint's edge. These
+       replace 35 loose hex literals in App.jsx, including two different ambers
+       that both meant "warning" (#8B6914 and #E67E22 -- the latter at 2.85:1
+       was the least legible text in the app, on the sale form). */
+    --success: #2F6B25;  --success-bg: #E8F5E3;  --success-border: #B8E0B0; /* 6.46 white · 5.72 tint */
+    --warning: #9A5A12;  --warning-bg: #FFF8E1;  --warning-border: #E8C36A; /* 5.46 white · 5.14 tint */
+    --danger:  #C0392B;  --danger-bg:  #FDECEA;  --danger-border:  #F0B8B0; /* 5.44 white · 4.76 tint */
+
+    /* ── controls ──────────────────────────────────────────────────────── */
+    /* Selects, quiet buttons, inset fills. These had no token at all and were
+       written as #F5F0EA, which is why a dark-mode select showed near-white
+       text on light-mode cream. */
+    --control-bg: #F5F0EA;
+    --control-border: #D4B896;
+    --focus-ring: #A5603A;
+
+    /* ── motion ────────────────────────────────────────────────────────────
+       Four durations and two curves, and they are deliberately short.
+
+       This app is read on mid-range Android LCDs, standing at a stall, with a
+       customer waiting. Past about 250ms an animation stops reading as polish
+       and starts reading as the phone being slow, and the person taps again.
+       So nothing here is decorative: every one of these fires because the user
+       did something, and its job is to say WHERE the new thing came from, then
+       get out of the way.
+
+       Before this there were five durations (0.2s, 0.3s, 0.5s, 0.8s and a bare
+       `transition: 0.3s`) and three curves, none of them chosen against each
+       other. Three progress bars used three different speeds. */
+    /* The bottom bar's pill, and therefore its selection marker. They read
+       the same custom property because an indicator that is not exactly the
+       shape of the thing it marks is just a second shape. */
+    --nav-pill-w: 88px;
+
+    --motion-tap:   90ms;   /* a control acknowledging a tap */
+    --motion-move:  160ms;  /* something moving or changing in place */
+    --motion-enter: 240ms;  /* a surface arriving over the screen */
+    --motion-value: 400ms;  /* a bar growing to a new number */
+
+    /* Fast out of the gate, gentle into the stop: an object that has weight
+       and is settling, rather than a value being interpolated. `ease-in` is
+       only ever for something LEAVING, where the reverse is true. */
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in:  cubic-bezier(0.4, 0, 1, 1);
+
+    /* The two shadows in the app, and they are TWO because there are two jobs.
+       Everything else is the hairline `0 0 0 1px` that section C settled on.
+
+       There were four recipes before this, for three things doing one job: the
+       install card spent 8px/30 at 15%, the toast 10/25 at 30%, the tour
+       tooltip 10/30 at 25%, all of them floating surfaces, and two of the three
+       in RAW BLACK rather than the app's ink. A black shadow is the one thing
+       that cannot follow a theme.
+
+       `raised` is the Sale button's, which was measured down from 0 8px 24px at
+       28% when the cards around it became rules. `float` is for a surface that
+       sits over the page rather than on it. */
+    --shadow-raised: 0 3px 14px rgba(44, 24, 16, 0.16);
+    --shadow-float:  0 8px 28px rgba(44, 24, 16, 0.18);
   }
 
   .dark {
+    /* A shadow is a darkening, and there is almost nothing left to darken on a
+       near-black page. These are lifted so a floating surface still separates
+       at all, but the real separation in dark mode comes from the border and
+       the surface step, which is why every floating thing here carries one. */
+    --shadow-raised: 0 3px 14px rgba(0, 0, 0, 0.45);
+    --shadow-float:  0 10px 30px rgba(0, 0, 0, 0.55);
     --bg-primary: #1A0E0A;
-    --text-primary: #FAF8F4;
-    --text-secondary: #C17F5A;
     --card-bg: #2C1810;
     --border-color: #3D271D;
-    --accent-color: #E27D60;
     --status-bar-bg: #1A0E0A;
+
+    --text-primary: #FAF8F4;
+    /* Was #C17F5A -- legible at 5.81, but identical to the light theme's
+       accent, so muted text and accent text were the same colour. Separating
+       them is the point of having two tokens. */
+    --text-secondary: #D6A98A; /* 8.91 page · 7.95 card */
+
+    --accent-color: #E27D60;
+    --accent-text: #E8946F;    /* 8.01 page · 7.14 card */
+
+    /* Tints are alpha over whatever is behind them, so one value is correct on
+       the page AND on a card. A flat light-mode tint hex cannot do that, which
+       is what broke the sale form's profit preview and every status badge. */
+    --success: #8FCB7E;  --success-bg: rgba(143,203,126,0.13);  --success-border: rgba(143,203,126,0.38);
+    --warning: #E8B06A;  --warning-bg: rgba(232,176,106,0.13);  --warning-border: rgba(232,176,106,0.38);
+    --danger:  #F09385;  --danger-bg:  rgba(240,147,133,0.13);  --danger-border:  rgba(240,147,133,0.38);
+
+    --control-bg: rgba(255,255,255,0.07);
+    --control-border: #4A3226;
+    --focus-ring: #E8946F;
   }
 
   body {
@@ -45,12 +183,134 @@
     color: var(--text-primary);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
-    transition: background-color 0.3s ease, color 0.3s ease;
   }
+  /* `body` used to cross-fade its colours over 0.3s when the theme changed, and
+     nothing else did. Every surface in the app is painted by an inline style,
+     which no stylesheet rule reaches, so the cards, the bar and the framed
+     column all flipped in one frame while the page behind them crawled. On a
+     phone that showed as a mismatched edge; on a desktop, where the body is
+     visible either side of the 1240px column, it was two large panels changing
+     at different speeds. A theme switch that is only PARTLY animated reads as a
+     rendering fault, so it happens in one frame now, everywhere. */
 
+  /* ONE FAMILY. DM Sans, weights 400-700, and nothing else.
+
+     There used to be a display serif (Playfair Display) on every heading. It
+     went for three reasons, in ascending order of importance:
+
+       1. It is a Didone -- very high stroke contrast. The thin strokes are the
+          character at 26px and are what breaks up at 15px on the 720p Android
+          LCDs this app is actually read on.
+       2. Cream ground + display serif + terracotta accent is the single most
+          templated look on the web, and Playfair is the most templated serif
+          in it. It read as a brochure, not as a tool someone runs a business
+          on.
+       3. It cost 295 KB of the 386 KB font payload, on first load, for users
+          who pay for every megabyte.
+
+     Hierarchy now comes from the three levers that were always available and
+     were being under-used: SIZE, WEIGHT and COLOUR, together. A section
+     heading and a row figure are both 16px and separate cleanly on weight
+     alone (700 against 600). Display type gets LIGHTER as it grows -- the
+     home total is 36px at weight 500 -- because reaching for bold at display
+     size is what makes a number look shouted rather than important. */
+
+  /* No font-family here: headings inherit the one family from body. The rule
+     survives only for the leading and the balance, both of which are wrong at
+     the body defaults. */
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-serif);
+    line-height: 1.18;
+    text-wrap: balance;
   }
+}
+
+/*
+ * Numerals.
+ *
+ * This app is a column of money. By default DM Sans sets proportional figures,
+ * so a 1 is narrower than a 7 and a column of right-aligned amounts comes out
+ * visibly ragged -- FCFA 111,500 above FCFA 45,500 above FCFA 7,200, none of
+ * the digits lining up. Tabular figures give every digit the same advance, so
+ * the column reads as a column. It also steadies the six-digit sign-in code,
+ * which otherwise reflows as each character is typed.
+ *
+ * Applied at the root rather than per element: nearly every number in BizTrack
+ * is data, and the few that are not lose nothing by it.
+ */
+.bt-app, .bt-focus {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/*
+ * Press feedback.
+ *
+ * There was none: no :hover, no :active anywhere in the app. On a phone that
+ * means every tap is a dead tap until the screen changes, and on a slow device
+ * the gap between touch and repaint is long enough to make someone tap twice.
+ *
+ * It lives here rather than in the style objects because an inline style cannot
+ * express a state at all, which is why there was none to begin with.
+ *
+ * Hover is behind `hover: hover` so a touch device never inherits a stuck hover
+ * state after a tap, and the press scale is dropped under reduced motion while
+ * the brightness change stays, so the feedback survives without the movement.
+ */
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(0.97);
+  filter: brightness(0.95);
+}
+
+/*
+ * The Home ledger rows keep the brightness and drop the scale.
+ *
+ * Those rows are full-bleed: their ground is the business's own colour and it
+ * reaches both screen edges. Scaling one to 0.97 pulls a 390px band 12px narrower
+ * and opens a gap of page colour down each side, so the row reads as detaching
+ * from the list rather than as being pressed. An inset row has a margin to
+ * shrink into; a full-bleed one does not.
+ *
+ * Specificity rather than ordering: (0,3,1) against the global rule's (0,2,1),
+ * so this holds wherever the two end up in the file.
+ */
+.bt-bizlist > button.bt-bizrow:active {
+  transform: none;
+  filter: brightness(0.94);
+}
+
+@media (hover: hover) {
+  button:not(:disabled):hover,
+  [role="button"]:not([aria-disabled="true"]):hover {
+    filter: brightness(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: none;
+  }
+}
+
+/*
+ * Focus.
+ *
+ * There was no focus style anywhere in this app, and S.input actively set
+ * outline:none. Every control here is styled with an inline style object, and
+ * an inline style beats a stylesheet -- so without !important the next inline
+ * style written removes the focus ring again without anyone noticing. That is
+ * what makes this the one place it is worth spending.
+ *
+ * :focus-visible, not :focus, so a thumb on a phone never sees the ring.
+ */
+:focus-visible {
+  outline: 2px solid var(--focus-ring) !important;
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* PWA App adjustments to prevent user selection on UI elements */
@@ -62,9 +322,48 @@
 
 /* App-wide animations. These must live here, not inside a component's inline
    <style>, or they only exist while that component happens to be mounted. */
-@keyframes toastIn {
+@keyframes bt-toast-in {
   from { opacity: 0; transform: translateY(20px) scale(0.9); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Content arriving in place: an onboarding step, a revealed row of buttons.
+   Was `fadeIn` and `slideIn`, identical bodies under two names, and used at
+   0.3s, 0.5s and 0.8s in six places. */
+@keyframes bt-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* A bottom sheet comes from the bottom. It had no entrance at all, so every
+   modal in the app simply existed, which is the one thing a sheet must not do:
+   the gesture it teaches (drag it back down) is only legible if you saw it
+   arrive from there. */
+@keyframes bt-sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
+}
+
+/* Above 700px the same component is a centred dialog rather than a sheet, and
+   a centred dialog sliding up from the bottom edge of a wide window is a phone
+   habit applied to a shape that has no bottom edge. It scales in from where it
+   already is. */
+@keyframes bt-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes bt-veil-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* The Sale button is not on every screen, so it arrives when you return to one
+   that has it. It is the app's core verb and the only thing that floats, so a
+   short pop is the one place drawing the eye is the point. */
+@keyframes bt-pop-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: none; }
 }
 
 @keyframes spin {
@@ -73,3 +372,336 @@
 }
 
 .spin { animation: spin 1s linear infinite; }
+
+/* ── what moves ───────────────────────────────────────────────────────────────
+   Motion lives here rather than in the inline style objects for the same
+   reason the :active rules do: an inline style cannot express a state or a
+   keyframe, and the alternative is the same declaration written once per
+   component. */
+
+/* Every sheet and dialog in the app: the six forms, the confirmations, the
+   update prompt. None of them had an entrance, so they simply existed, fully
+   formed, over a screen that had not changed. The veil and the sheet are given
+   the same duration on purpose, so the darkening and the arrival read as one
+   event rather than two. */
+/* The bottom bar's selection marker. The track is as wide as the row between
+   the gutters and as tall as the pills, so the marker takes both from it: a
+   third of the width, all of the height, and a whole number of columns to
+   move. */
+.bt-navtrack {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+.bt-navmarker {
+  position: absolute;
+  inset: 0;
+  width: calc(100% / 3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transform: translateX(calc(var(--nav-index, 0) * 100%));
+  transition: transform var(--motion-move) var(--ease-out);
+}
+.bt-navmarker[data-off] { opacity: 0; }
+.bt-navmarker-pill {
+  width: var(--nav-pill-w);
+  height: 100%;
+  border-radius: 16px;
+  background: rgba(193, 127, 90, 0.12);
+}
+
+/* Changing screen was instantaneous, which sounds like the ideal and is not:
+   with the bar, the heading and the gutters identical on all three, a hard cut
+   between Home and Analytics gives no sense that anything was replaced, only
+   that numbers changed. A short fade says the content is what moved, while the
+   chrome around it demonstrably did not.
+
+   Content only. The nav and the Sale button sit outside .bt-screen and stay
+   exactly where they are, which is the whole point.
+
+   There is deliberately NO stagger on the rows inside. A list that deals
+   itself out like a hand of cards is the most common tell of motion added for
+   its own sake, it delays the first row on every single navigation, and this
+   is a ledger someone checks twenty times a day. */
+.bt-screen { animation: bt-veil-in var(--motion-move) var(--ease-out); }
+
+.bt-fab { animation: bt-pop-in var(--motion-enter) var(--ease-out); }
+
+/* Switching tab inside a business replaces the content under a strip that does
+   not move, which is the same problem the screen fade solves one level up. */
+.bt-tabinner { animation: bt-veil-in var(--motion-move) var(--ease-out); }
+
+.bt-install { animation: bt-rise var(--motion-enter) var(--ease-out); }
+
+.bt-modal { animation: bt-veil-in var(--motion-enter) var(--ease-out); }
+.bt-sheet { animation: bt-sheet-up var(--motion-enter) var(--ease-out); }
+
+/* Someone who has asked their phone to stop animating things has usually asked
+   for a reason -- vestibular discomfort, or a cheap device where animation
+   costs frames. The spinner keeps turning, slowly enough to read as "working"
+   without strobing. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spin { animation: spin 2.4s linear infinite !important; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Responsive layout
+   ══════════════════════════════════════════════════════════════════════════
+
+   BizTrack was built phone-first and that is not an accident to be corrected:
+   the people it is for run their business from an Android in one hand. The
+   phone layout is the reference design and stays exactly as it was.
+
+   So every rule below sits inside a MIN-width media query. At phone widths not
+   one declaration here applies -- not overridden, not recalculated, simply not
+   matched. That is what makes "do not break mobile" a property of the file
+   rather than a promise.
+
+   Almost everything needs !important, because the app is styled with inline
+   style objects and an inline style outranks a stylesheet. That is normally a
+   smell; here it is the only way a media query can reach the layout at all,
+   and it is safe precisely because these blocks cannot match a phone.
+
+   The two shapes:
+
+     >= 700px   one column, wider, grids where a grid helps, and dialogs
+                instead of bottom sheets. Tablets, split-screen, small windows.
+     >= 1024px  the bottom bar becomes a left rail and content stops at a
+                readable measure. Laptops and desktops.
+
+   Single-purpose screens -- sign in, onboarding, the lock screen -- stay a
+   centred column at every width. They are never a dashboard.
+*/
+
+/* A long business or item name with no spaces in it should wrap, not run out
+   of its row. Applies at every width because it only acts when something would
+   otherwise overflow. */
+.bt-screen { overflow-wrap: break-word; }
+
+/* The two figure rows -- portfolio totals on Home, revenue/profit/margin on a
+   business -- lay three numbers across a fixed-width card. Both sized their
+   children at max-content with no way to give, so on a 320px phone the third
+   figure was clipped off the summary card entirely and the three hero figures
+   ran together as "FCFA 66,500FCFA 45,50068%".
+   Wrapping engages only when the row genuinely does not fit, so at 360px and
+   above nothing moves. */
+.bt-summaryrow, .bt-herorow { flex-wrap: wrap; }
+.bt-summaryrow { row-gap: 10px; }
+.bt-herorow { column-gap: 16px; row-gap: 8px; }
+.bt-summaryrow > div, .bt-herorow > div { min-width: 0; }
+
+/* The record-sale button floats over the last rows of the screens it appears
+   on, so those two screens get clearance under their final row. Every other
+   screen keeps the plain bottom-nav padding. */
+.bt-has-fab { padding-bottom: calc(148px + env(safe-area-inset-bottom)) !important; }
+
+/* ── >= 700px ─────────────────────────────────────────────────────────────── */
+@media (min-width: 700px) {
+  /* The column reads as a deliberate frame rather than a phone stranded in the
+     middle of a monitor. */
+  .bt-app {
+    max-width: 780px !important;
+    border-inline: 1px solid var(--border-color);
+  }
+
+  .bt-statsgrid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+  }
+
+  /* A sheet slides up from the bottom edge because that is where the thumb is.
+     With a mouse it is just a dialog, so it becomes one. */
+  .bt-modal {
+    align-items: center !important;
+    justify-content: center;
+    padding: 24px;
+  }
+  .bt-sheet {
+    width: min(470px, 100%) !important;
+    border-radius: 20px !important;
+    max-height: 88% !important;
+    padding-bottom: 28px !important;
+    box-shadow: 0 24px 64px rgba(44, 24, 16, 0.28);
+  }
+  .bt-handle { display: none; }   /* nothing to drag */
+  /* And because there is nothing to drag, there has to be something to click.
+     The phone does not get this: there the drag IS the close, and a button
+     beside it would be the redundant control the gesture replaces. */
+  .bt-sheet-close { display: inline-flex !important; }
+  .bt-grab { cursor: default; }
+  /* No bottom edge to come from, so it arrives where it already is. */
+  .bt-sheet { animation-name: bt-dialog-in; }
+}
+
+/* ── >= 1024px ────────────────────────────────────────────────────────────── */
+@media (min-width: 1024px) {
+  .bt-app { max-width: 1240px !important; }
+
+  /* Same three destinations, same DOM, turned on its side. A bar pinned to the
+     bottom of a 900px-tall window is a phone habit, not a layout. */
+  .bt-nav {
+    top: 0 !important;
+    bottom: 0 !important;
+    right: auto !important;
+    width: 236px !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    gap: 4px;
+    padding: 22px 14px !important;
+    border-top: none !important;
+    border-right: 1px solid var(--border-color) !important;
+    box-shadow: none !important;
+  }
+  /* S.bottomNav carries boxSizing:content-box so the gesture-bar inset adds
+     BELOW its 78px height. As a rail spanning top:0/bottom:0 that same rule
+     would add the vertical padding on top of a full-height box and overflow
+     the window, so the rail takes its padding inside its width instead. */
+  .bt-nav { box-sizing: border-box !important; }
+
+  /* The install card and the toast are both pinned relative to the bottom bar
+     that no longer exists here. The card moves to the left of the window and
+     the Sale button keeps the right corner, so neither needs the raised rung:
+     `.bt-raised` is deliberately not answered in this block. */
+  .bt-install {
+    left: 260px !important;
+    right: auto !important;
+    bottom: 24px !important;
+    width: min(400px, 42%) !important;
+  }
+  .bt-toast { bottom: 32px !important; }
+
+  .bt-navitem { flex: none !important; }
+  .bt-navpill {
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 14px !important;
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+    width: 100% !important;
+  }
+  .bt-navlabel { font-size: 14px !important; letter-spacing: 0 !important; }
+
+  .bt-navtrack { flex-direction: column; gap: 4px; width: 100%; flex: none; }
+  .bt-navmarker { display: none; }
+  .bt-navitem[aria-current="page"] .bt-navpill { background: rgba(193, 127, 90, 0.12); }
+
+  .bt-main { margin-left: 236px; }
+
+  /* Content stops at a measure and centres in what is left, so a sale row does
+     not stretch 900px across a monitor with a number at each end. The nav is no
+     longer underneath anything, so the bottom inset goes back to ordinary
+     padding. */
+  .bt-screen {
+    padding-top: 8px !important;
+    padding-bottom: 48px !important;
+    padding-inline: max(0px, calc((100% - 880px) / 2)) !important;
+  }
+  /* Running prose wants a narrower measure than a dashboard does. */
+  .bt-prose {
+    padding-inline: max(0px, calc((100% - 720px) / 2)) !important;
+  }
+
+  .bt-tabinner { gap: 14px !important; }
+
+  /* No bottom bar here, so the button sits in the corner of the window and the
+     clearance shrinks back to ordinary padding. */
+  .bt-fab { bottom: 28px !important; right: 24px !important; }
+  .bt-has-fab { padding-bottom: 104px !important; }
+
+  /* The business hero spreads revenue / profit / margin with space-between, so
+     at full width the margin figure ends up underneath the decorative orb in
+     the top-right corner. Keeping the row to a measure groups the three
+     numbers where they can be compared. */
+  .bt-herorow { max-width: 620px; }
+  .bt-sheet { width: min(520px, 100%) !important; }
+}
+
+/* ── short windows ────────────────────────────────────────────────────────── */
+/* A centred column taller than the window is unreachable: justify-content:
+   center pushes the top out of the scroll range, and the top is where the
+   consent checkbox and the six-digit code field live. Landscape on a phone is
+   the common case; a short desktop window is the other one. */
+/* A 78px bar is a fifth of a landscape phone. Same three destinations, laid
+   out flat, on every short screen that still has a bar rather than a rail. */
+@media (max-height: 520px) and (max-width: 1023px) {
+  .bt-nav {
+    min-height: calc(54px + env(safe-area-inset-bottom)) !important;
+    padding: 0 24px env(safe-area-inset-bottom) !important;
+  }
+  .bt-nav { --nav-pill-w: 112px; }
+  .bt-navpill {
+    flex-direction: row !important;
+    gap: 8px !important;
+    padding: 6px 12px !important;
+    width: var(--nav-pill-w) !important;
+  }
+  .bt-navlabel { font-size: 12px !important; }
+  .bt-screen { padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important; }
+
+  /* The install card is 200px of a 390px-tall landscape phone. The heading and
+     the button are the part that does the work; the sentence explaining what
+     "add to home screen" means is what goes. */
+  .bt-install { bottom: calc(62px + env(safe-area-inset-bottom)) !important; padding: 10px 14px !important; }
+  .bt-install.bt-raised { bottom: calc(118px + env(safe-area-inset-bottom)) !important; }
+  .bt-toast { bottom: calc(118px + env(safe-area-inset-bottom)) !important; }
+  .bt-fab { bottom: calc(66px + env(safe-area-inset-bottom)) !important; height: 44px !important; }
+  .bt-has-fab { padding-bottom: calc(118px + env(safe-area-inset-bottom)) !important; }
+  .bt-install-desc { display: none !important; }
+}
+
+/*
+ * A focus screen centres its content, and none of that content may ever be
+ * unreachable.
+ *
+ * Those two are in tension and the obvious spelling gets it wrong. A flex
+ * column centred with `justify-content: center` pushes the overflow out of
+ * BOTH ends of the scroll range, so the moment the content is taller than the
+ * window the top is gone and cannot be scrolled back to. That is why the
+ * short-screen rule below this one existed: it gave up centring entirely
+ * under 620px, because the consent checkbox and the six-digit code field live
+ * at the top of exactly these screens.
+ *
+ * It was never only a short-screen problem. `S.phone` sets `overflow: hidden`
+ * and every focus screen sets `justifyContent: center` inline, so above 620px
+ * the content was centred AND clipped: measured on the signup screen at
+ * 390x820 with one validation error showing, 832px of content in an 820px
+ * window, 6px lost off each end into padding. Nothing had been lost yet. It
+ * was 6px from losing something.
+ *
+ * Two auto-margined pseudo-elements are the spelling that satisfies both.
+ * They are flex items, so they absorb the free space equally and centre the
+ * real children when the content fits; when it does not there is no free
+ * space, the auto margins resolve to zero, and the content sits at the top of
+ * a scroller that reaches all of it. `!important` because those two inline
+ * declarations outrank a stylesheet, which is the same reason the responsive
+ * blocks above carry it.
+ *
+ * ClaimScreen used to carry its own `overflowY: "auto"`, one screen out of
+ * nine patched where it was noticed. That is the shape of drift this app has
+ * been removing all week, and it is gone: this rule covers all nine.
+ */
+.bt-focus {
+  justify-content: flex-start !important;
+  overflow-y: auto !important;
+}
+.bt-focus::before,
+.bt-focus::after {
+  content: "";
+  margin-block: auto;
+}
+
+@media (max-height: 620px) {
+  /* Only the padding now. The scroll model above is height-independent. */
+  .bt-focus {
+    padding-block: 28px !important;
+  }
+}

@@ -38,7 +38,7 @@ export function describeAuthError(error) {
   }
   // The offline case, which for this audience is routine rather than exceptional.
   if (lower.includes("fetch") || lower.includes("network") || lower.includes("failed to fetch")) {
-    return "No internet connection. You can keep working offline — this will sync later.";
+    return "No internet connection. You can keep working offline. This will sync later.";
   }
   return message || "Something went wrong. Please try again.";
 }

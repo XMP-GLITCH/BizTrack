@@ -23,6 +23,7 @@
  */
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { callerIsCron } from "../_shared/secret.ts";
 
 const env = (k: string, d = "") => Deno.env.get(k) ?? d;
 
@@ -34,6 +35,37 @@ const POSTHOG_HOST = env("POSTHOG_HOST", "https://eu.i.posthog.com").replace(/\/
 
 /** One run's worth. Keeps a single invocation inside the CPU limit. */
 const BATCH = Number(env("FORWARD_BATCH", "200"));
+
+/**
+ * Free text never leaves for PostHog.
+ *
+ * The privacy policy tells people PostHog "never receive your item names,
+ * prices, sales figures or customers". The client allowlist keeps business
+ * data out of every OTHER property, but `message` and `stack` are on that
+ * allowlist deliberately, because a crash report without them is useless -- and
+ * they are free text captured from arbitrary runtime errors. `scrubText`
+ * removes email addresses and numbers of six digits or more, and XAF prices in
+ * this app are routinely four and five: 2,500, 9,500, 45,500.
+ *
+ * So the allowlist could not keep that promise, and the promise was absolute.
+ * Rather than soften the sentence, the two free-text fields are dropped here.
+ * PostHog still gets the event, the code location and the counts, which is what
+ * "which parts of the app are used and which are breaking" actually needs.
+ *
+ * Nothing is lost: the raw events stay in our own database under the 90-day
+ * rule, which is where the full crash text remains queryable. That is the
+ * function's own stated position -- PostHog is a view onto the data, not the
+ * system of record.
+ */
+const FREE_TEXT = new Set(["message", "stack"]);
+
+function forwardable(props: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props ?? {})) {
+    if (!FREE_TEXT.has(k)) out[k] = v;
+  }
+  return out;
+}
 
 interface Row {
   id: number;
@@ -54,8 +86,9 @@ const json = (body: unknown, status = 200) =>
 
 Deno.serve(async (req) => {
   // Same shared secret as the notification sender: the caller is cron, not a
-  // person, so there is no JWT to check.
-  if (!NOTIFY_SECRET || req.headers.get("x-notify-secret") !== NOTIFY_SECRET) {
+  // person, so there is no JWT to check. Same constant-time comparison too --
+  // these two share a secret, so a timing signal on either one leaks both.
+  if (!callerIsCron(req, NOTIFY_SECRET)) {
     return json({ error: "unauthorized" }, 401);
   }
 
@@ -84,7 +117,7 @@ Deno.serve(async (req) => {
     distinct_id: r.user_id ?? `anon:${r.session_id}`,
     timestamp: r.occurred_at,
     properties: {
-      ...r.props,
+      ...forwardable(r.props),
       $session_id: r.session_id,
       app_version: r.app_version ?? undefined,
       // The offline gap, kept as a first-class property: it is the measurement

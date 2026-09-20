@@ -11,7 +11,7 @@
 
 import { track, flush } from "./analytics.js";
 
-/** Trim to the top frames — the tail is framework noise and pure payload. */
+/** Trim to the top frames; the tail is framework noise and pure payload. */
 const topFrames = (stack, n = 6) =>
   String(stack || "").split("\n").slice(0, n).join("\n").slice(0, 1500);
 

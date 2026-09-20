@@ -146,7 +146,7 @@ export function shell(o: ShellOptions): string {
     </td></tr>
 
     <tr><td style="padding:22px 8px 0;">
-      <p style="margin:0;font-family:${SANS};font-size:12px;line-height:1.6;color:${MUTED};">BizTrack — inventory, sales and profit for small businesses.</p>
+      <p style="margin:0;font-family:${SANS};font-size:12px;line-height:1.6;color:${MUTED};">BizTrack: inventory, sales and profit for small businesses.</p>
       ${unsub}
     </td></tr>
 

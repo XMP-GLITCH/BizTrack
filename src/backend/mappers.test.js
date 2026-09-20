@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import {
   businessToRow, rowToBusiness, itemToRow, rowToItem,
   saleToRow, rowToSale, movementToRow, rowToMovement,
+  invoiceToRow, rowToInvoice,
   flattenBusinesses, assembleBusinesses,
 } from "./mappers.js";
 import { migrateLegacyBusiness } from "../domain/migrate.js";
+import { makeInvoice } from "../domain/schema.js";
 import { calcBizStats } from "../domain/stats.js";
 import { deriveInventory } from "../domain/inventory.js";
 
@@ -20,9 +22,10 @@ const OWNER = "11111111-1111-1111-1111-111111111111";
  */
 const DB_COLUMNS = {
   businesses: "category,color,created_at,currency,deleted_at,emoji,id,name,owner_id,updated_at",
-  items: "archived_at,business_id,created_at,deleted_at,id,name,unit_price,updated_at",
-  sales: "asking_price,business_id,created_at,created_by,deleted_at,id,is_custom,item_id,item_name,note,occurred_at,qty,unit_cost,unit_price,updated_at",
+  items: "archived_at,business_id,created_at,deleted_at,id,name,photo_id,unit_price,updated_at",
+  sales: "asking_price,business_id,created_at,created_by,deleted_at,group_id,id,is_custom,item_id,item_name,note,occurred_at,qty,unit_cost,unit_price,updated_at",
   stock_movements: "business_id,created_at,created_by,delta,id,item_id,occurred_at,reason,sale_id,unit_cost,updated_at",
+  invoices: "business_id,created_at,created_by,customer_contact,customer_name,deleted_at,due_at,id,issued_at,lines,note,paid_at,paid_method,sale_group_id,updated_at",
 };
 
 const columnsOf = (table) => new Set(DB_COLUMNS[table].split(","));
@@ -152,6 +155,31 @@ test("flatten then assemble reproduces the books exactly", () => {
   );
 });
 
+test("flattenBusinesses does not drop invoices -- 20 September 2026", () => {
+  // `flattenBusinesses` computed `flat.invoices` per business via
+  // `flattenBusiness` but never initialised or pushed to an `invoices` key on
+  // its own accumulator. So every real sync silently dropped invoices, then
+  // threw inside `upsertAll("invoices", undefined)` -- after businesses,
+  // items, sales and movements had already reached the server, but before
+  // `pushChanges` returned and before the pull half of `syncOnce` ever ran.
+  // No sync could complete for any account that had ever created an invoice,
+  // and the failure looked identical to every other silent sync failure:
+  // nothing in the UI named it.
+  const b = sample();
+  b.invoices = [makeInvoice({ businessId: b.id, lines: [{ name: "Repair", qty: 1, unitPrice: 5000 }] })];
+
+  const flat = flattenBusinesses([b], OWNER);
+  assert.equal(flat.invoices.length, 1, "the invoice must survive flattening, not be silently dropped");
+
+  const stamp = (rows) => rows.map((r) => ({ ...r, updated_at: new Date().toISOString() }));
+  const [after] = assembleBusinesses({
+    businesses: stamp(flat.businesses),
+    invoices: stamp(flat.invoices),
+  });
+  assert.equal(after.invoices.length, 1, "the invoice must round-trip through the server shape");
+  assert.equal(after.invoices[0].lines[0].name, "Repair");
+});
+
 test("an incremental pull that returns a child without its parent drops it", () => {
   const b = sample();
   const flat = flattenBusinesses([b], OWNER);
@@ -162,4 +190,35 @@ test("an incremental pull that returns a child without its parent drops it", () 
 test("assembling tolerates missing row sets entirely", () => {
   assert.doesNotThrow(() => assembleBusinesses({}));
   assert.deepEqual(assembleBusinesses({}), []);
+});
+
+
+test("invoice rows use only real columns", () => {
+  const inv = makeInvoice({
+    customerName: "Mama Ngwa",
+    customerContact: "677 00 00 00",
+    lines: [{ name: "Crochet Beanie", qty: 2, unitPrice: 6000 }],
+  });
+  for (const key of Object.keys(invoiceToRow(inv, "biz-1", "user-1"))) {
+    assert.ok(columnsOf("invoices").has(key), `invoices has no column "${key}"`);
+  }
+});
+
+test("an invoice survives the round trip to a row and back", () => {
+  // Lines travel as JSONB, which is the part that could silently arrive as a
+  // string or lose its shape.
+  const inv = makeInvoice({
+    customerName: "Mama Ngwa",
+    lines: [{ name: "Tote Bag", qty: 3, unitPrice: 9500 }],
+    paidAt: "2026-09-17T10:00:00.000Z",
+    paidMethod: "Mobile money",
+  });
+  const back = rowToInvoice({ ...invoiceToRow(inv, "biz-1", "user-1"), updated_at: inv.updatedAt });
+
+  assert.equal(back.customerName, "Mama Ngwa");
+  assert.equal(back.lines.length, 1);
+  assert.equal(back.lines[0].qty, 3);
+  assert.equal(back.lines[0].unitPrice, 9500);
+  assert.equal(back.paidMethod, "Mobile money");
+  assert.ok(back.paidAt);
 });

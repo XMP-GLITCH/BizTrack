@@ -120,10 +120,10 @@ def shell(title, preheader, heading, body, cta_label=None,
         <tr>
           <td style="padding:22px 8px 0;">
             <p style="margin:0 0 6px;font-family:%(sans)s;font-size:12px;line-height:1.6;color:%(muted)s;">
-              Didn't ask for this? Ignore this email — nothing on your account changes, and no one reaches your books without it.
+              Didn't ask for this? Ignore this email. Nothing on your account changes, and no one reaches your books without it.
             </p>
             <p style="margin:0;font-family:%(sans)s;font-size:12px;line-height:1.6;color:%(muted)s;">
-              BizTrack — inventory, sales and profit for small businesses.
+              BizTrack: inventory, sales and profit for small businesses.
             </p>
           </td>
         </tr>
@@ -146,7 +146,7 @@ TEMPLATES = {
         preheader="One tap and your books start backing up.",
         heading="Confirm your email",
         body=para("Welcome to BizTrack. Confirm this address and your inventory, sales and profit "
-                  "start backing up — so your books survive a lost, stolen or replaced phone.")
+                  "start backing up, so your books survive a lost, stolen or replaced phone.")
              + para("This is the last step."),
         cta_label="Confirm my email",
         footer_note="The link and the code both expire after a while. If yours has, sign in again and a fresh one is sent."),
@@ -164,7 +164,7 @@ TEMPLATES = {
         preheader="Set a new BizTrack password.",
         heading="Set a new password",
         body=para("Someone asked to reset the password on this BizTrack account. If that was you, choose a new one now.")
-             + para("Your books are untouched either way — nothing is deleted, and nothing is lost if you ignore this."),
+             + para("Your books are untouched either way. Nothing is deleted, and nothing is lost if you ignore this."),
         cta_label="Choose a new password",
         footer_note="Only the newest reset link works. Asking again replaces the one above."),
 
@@ -176,7 +176,7 @@ TEMPLATES = {
                   "Confirm it to finish the change.")
              + para("Until you do, your old address keeps working and nothing about your account changes."),
         cta_label="Confirm the change",
-        footer_note="Didn't request this? Ignore it, then change your password — someone may know your current one."),
+        footer_note="Didn't request this? Ignore it, then change your password. Someone may know your current one."),
 
     "reauthentication.html": shell(
         title="Your confirmation code",

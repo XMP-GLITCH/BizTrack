@@ -56,16 +56,19 @@ export const PRIVACY_POLICY = {
     {
       heading: "What BizTrack stores",
       body: P(
-        "On your device, whether or not you have an account: the businesses you create, your items and their prices, your sales, your stock movements, your display name, and your app settings.",
-        "If you create an account, additionally: your email address, and — if you sign in with Google — the name and email Google returns to us. We do not receive your Google password.",
+        "On your device: the businesses you create, your items and their prices, your sales, your stock movements, your display name, and your app settings.",
+        "Any photographs you take of your products are also stored on your device, and copied to our database. They are yours; we do not look at them and nothing else is done with them.",
+        "If you write an invoice, we hold what you put on it: the customer's name and the phone number or email you typed, along with the items and amounts. You choose whether to fill those in, and an invoice works without them.",
+        "BizTrack needs an account, so we also hold: your email address, and, if you sign in with Google, the name and email Google returns to us. We do not receive your Google password.",
         "If you agree to share usage data, we also store which screens and features you used and details of any crash. That is described in its own section below.",
-        "We do not collect your location, your contacts, your phone number, or anything from other apps. BizTrack contains no advertising and no third-party trackers.",
+        "We do not collect your location, we do not read your phone's contacts, and we take nothing from other apps. A customer's details reach us only because you typed them onto an invoice. BizTrack contains no advertising and no third-party trackers.",
+        "Because those details are about someone else, you are the one who decides what to record about your customers, and you should only put on an invoice what you need in order to be paid. If a customer asks you to remove their details, delete the invoice and they are gone from your device and from our database.",
       ),
     },
     {
       heading: "Where your data goes",
       body: P(
-        "Without an account, your records stay on your device and are not sent anywhere.",
+        "Your records are kept on your phone and copied to our database. The app itself works offline: it reads and writes on your device, and the copy travels when there is signal.",
         "With an account, your records are copied to our database so you can reach them from another device and recover them if your phone is lost. That database is operated by Supabase, and it is hosted outside Cameroon. Sending your data to us therefore involves a transfer of personal data abroad, which we ask you to consent to when you create an account.",
         "The other companies that handle your data on our behalf, and only on our instructions, are: Supabase (database, authentication and hosting), Google (only if you choose to sign in with Google), Brevo (sending the emails described below), and PostHog (charting the usage data described below, if you agreed to share it). We do not sell your data, and we do not share it for advertising.",
       ),
@@ -75,26 +78,37 @@ export const PRIVACY_POLICY = {
       body: P(
         "To provide the service you asked for: keeping your books, syncing them between your devices, and restoring them if you lose a phone.",
         "To contact you about your account: confirming your email, resetting your password, telling you before your trial ends, and telling you when someone signs in.",
-        "Where the law requires consent — in particular for transferring your data outside Cameroon — we ask for it explicitly when you create an account, and you can withdraw it by deleting your account.",
+        "Where the law requires consent, in particular for transferring your data outside Cameroon, we ask for it explicitly when you create an account, and you can withdraw it by deleting your account.",
       ),
     },
     {
       heading: "Storage on your device, and cookies",
       body: P(
-        "BizTrack stores data in your browser's local storage. That is what makes the app work offline, which is the point of it. It holds your books, your settings, and — when signed in — the token that keeps you signed in.",
+        "BizTrack stores data in your browser's local storage. That is what makes the app work offline, which is the point of it. It holds your books, your settings, and, when signed in, the token that keeps you signed in.",
         "We use no advertising cookies and no third-party tracking cookies. Nothing you do here is shared with an advertising network.",
         "If you agree to it, we also store a small queue of usage events (described in the next section) until they can be sent. You are asked before any of that is collected, and turning it off in Settings deletes anything still waiting to be sent.",
-        "Clearing your browser's site data for BizTrack erases your local records. If you have no account and no export, that copy is not recoverable.",
+        "Clearing your browser's site data for BizTrack erases the copy on your phone. Your account still holds your records, and signing in again brings them back, except for anything recorded since the last time the app reached us.",
       ),
     },
     {
       heading: "Understanding how the app is used",
       body: P(
-        "BizTrack is in beta, and we need to know which parts work. If you agree, the app records which screens you open, which features you use, and details of any crash — including the error message and the part of the code it came from.",
+        "BizTrack is in beta, and we need to know which parts work. If you agree, the app records which screens you open, which features you use, and details of any crash, including the error message and the part of the code it came from.",
+        "A crash message is written by the app, not by you, and we cannot promise in advance what a future error will put in one. So it stays in our own database and is never sent on to anyone else. PostHog, described below, receives the crash and where in the code it happened, and never the message itself.",
         "We never collect your business data this way. Not your item names, not your prices, not your sales figures, not your customers, not your business names. The app checks every value against a list of what is allowed to leave your device, and anything that looks like an email address or a long number is removed before it is sent.",
-        "We ask before collecting any of it, and nothing is collected until you say yes. You can change your mind at any time in Settings → Privacy; switching it off also deletes anything still waiting to be sent from your device.",
+        "We ask before collecting any of it, and nothing is collected until you say yes. You can change your mind at any time in Settings → About BizTrack → Share usage data; switching it off also deletes anything still waiting to be sent from your device.",
         "This information is kept for 90 days in our own database and then deleted automatically.",
-        "We also send a copy to PostHog, a company that turns it into charts so we can see which parts of the app are used and which are breaking. They process it only on our instructions. They receive the same usage events described above — never your item names, prices, sales figures or customers — and they never receive it from your device: it goes from our servers to theirs, so nothing about PostHog is placed on your phone.",
+        "Each of these events carries a random identifier for your account, so that a sequence of screens reads as one journey rather than as unconnected fragments. That identifier is not your name or your email, but it is the same one across your visits.",
+        "We also send a copy to PostHog, a company that turns it into charts so we can see which parts of the app are used and which are breaking. They process it only on our instructions, and they receive that identifier along with the events. They never receive your item names, prices, sales figures or customers, and they never receive anything from your device: it goes from our servers to theirs, so nothing about PostHog is placed on your phone.",
+      ),
+    },
+    {
+      heading: "When you write to us in the app",
+      body: P(
+        "The feedback box in Settings sends us whatever you type, along with the rating you picked and which version of the app you are running. It carries your account, so we can write back.",
+        "It is held in our database and sent on to our own inbox by email, through Brevo, the same company that sends the emails described below. We use it to fix what is broken and decide what to build.",
+        "Nothing is sent until you tap send. If you have no signal it waits on your phone and goes when you do, so a message written offline is not lost.",
+        "Write to us at the address above if you want a message you sent deleted.",
       ),
     },
     {
@@ -115,10 +129,10 @@ export const PRIVACY_POLICY = {
     {
       heading: "Your rights",
       body: P(
-        "You can get a copy of your data at any time: Settings → Backup Data, or the CSV export, without asking us.",
-        "You can delete your account and everything in it from Settings → Delete Account. It is immediate and cannot be undone.",
+        "You can get a copy of your data at any time, without asking us: Account → Your files, which offers a backup file you can restore from and a CSV you can open in a spreadsheet.",
+        "You can delete your account and everything in it from Account → Danger zone → Delete Account. It is immediate and cannot be undone.",
         "You can correct anything that is wrong by editing it in the app.",
-        "You can withdraw your agreement to usage data at any time in Settings → Privacy, without losing any feature of the app.",
+        "You can withdraw your agreement to usage data at any time in Settings → About BizTrack → Share usage data, without losing any feature of the app.",
         `You can object to how we use your data, or complain, by writing to ${ENTITY.email} or messaging ${ENTITY.phone} on WhatsApp. If you are in a country with a data protection authority, you may also complain to it.`,
       ),
     },
@@ -179,7 +193,7 @@ export const TERMS = {
       body: P(
         "New accounts get 30 days free, with everything switched on.",
         "After that: 3,500 XAF per month, or 30,000 XAF per year.",
-        "Payment is arranged directly with us — by mobile money — and we record it against your account. Prices include any taxes we are required to charge unless we say otherwise.",
+        "Payment is arranged directly with us, by mobile money, and we record it against your account. Prices include any taxes we are required to charge unless we say otherwise.",
         "We may change the price. If we do, we will tell you before it applies to you, and you can stop paying.",
       ),
     },
@@ -218,7 +232,7 @@ export const TERMS = {
       body: P(
         "To the fullest extent the law allows, we are not liable for lost profits, lost business, or losses that follow indirectly from a problem with the app.",
         "Where we are liable, our total liability to you is limited to what you paid us in the twelve months before the problem arose.",
-        "Nothing here removes any right you have under the law of your country that cannot be removed by agreement — including, if it applies to you, rights as a consumer.",
+        "Nothing here removes any right you have under the law of your country that cannot be removed by agreement, including, if it applies to you, rights as a consumer.",
       ),
     },
     {
@@ -232,7 +246,7 @@ export const TERMS = {
       heading: "Ending it",
       body: P(
         "You can stop and delete your account whenever you like.",
-        "We may close an account that breaks these terms, or stop offering the service entirely — and if we stop, we will give you reasonable notice and time to export everything.",
+        "We may close an account that breaks these terms, or stop offering the service entirely. If we stop, we will give you reasonable notice and time to export everything.",
       ),
     },
     {
@@ -257,4 +271,41 @@ export const DOCUMENTS = { privacy: PRIVACY_POLICY, terms: TERMS };
  * Compared against what the user accepted, so a cosmetic edit does not nag
  * everyone and a real change is not silently applied to them.
  */
-export const LEGAL_VERSION = "2026-09-14";
+// BUMPED 17 September 2026, and deliberately, which the route-name corrections
+// on 14 September deliberately were NOT. Bumping re-prompts every existing user
+// for consent, so it is reserved for a change to WHAT IS COLLECTED rather than
+// how it is worded. Two new categories qualify: photographs of products, and a
+// customer's name and contact details typed onto an invoice, which is the first
+// personal data about a THIRD PARTY this app has ever held and which crosses a
+// border like everything else.
+//
+// Bumped again on 18 September, and the reasoning needs stating because it does
+// not obviously fit the rule above. Nothing new is COLLECTED: feedback was
+// already being collected, and PostHog now receives strictly less than before.
+// What changed is the disclosure. A whole category -- the words someone types
+// into the feedback box, sent to our database and on to our inbox, from a user
+// who may have no account at all -- was never described here.
+//
+// Someone who agreed to the previous version agreed to a document that did not
+// mention it. That is a change to the deal from THEIR side, which is what the
+// rule is actually protecting, so it re-prompts.
+//
+// Bumped again on 19 September, for AN ACCOUNT BECOMING REQUIRED.
+//
+// This one does fit the rule, and it is worth being precise about why, because
+// no new category of data appears below. What changed is that a category which
+// used to be OPTIONAL is now unavoidable: an email address. Someone could
+// previously run this app having given us nothing at all, and the document said
+// so in six places -- "whether or not you have an account", "without an
+// account, your records stay on your device and are not sent anywhere", "for
+// your session if you have no account". Every one of those is now false, and
+// all six are rewritten above.
+//
+// For a given person that is a change to what is collected FROM THEM, which is
+// the test this rule applies. So it re-prompts.
+//
+// It is also the cheapest this will ever be. There are two real users today and
+// fifty beta places about to open; everyone arriving after this point accepts
+// this version on the way in, and doing it later would re-prompt fifty people
+// instead of two.
+export const LEGAL_VERSION = "2026-09-19";

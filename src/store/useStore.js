@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware'
 import { newId } from '../domain/ids.js'
 import { DEFAULT_CURRENCY, normalizeCurrency } from '../domain/money.js'
 import { MOVEMENT, deriveInventory, deriveItemState } from '../domain/inventory.js'
-import { SCHEMA_VERSION, makeBusiness, makeItem, makeSale, makeStockMovement } from '../domain/schema.js'
+import { SCHEMA_VERSION, makeBusiness, makeItem, makeSale, makeStockMovement, makeInvoice } from '../domain/schema.js'
 import { migrateState, verifyMigration } from '../domain/migrate.js'
 
 /**
@@ -75,6 +75,11 @@ const mapItem = (business, itemId, updater) => ({
   items: business.items.map((i) => (i.id === itemId ? touch(updater(i)) : i)),
 })
 
+const mapInvoice = (business, invoiceId, updater) => ({
+  ...business,
+  invoices: (business.invoices || []).map((v) => (v.id === invoiceId ? touch(updater(v)) : v)),
+})
+
 export const useStore = create(
   persist(
     (set, get) => ({
@@ -134,8 +139,11 @@ export const useStore = create(
       /* ── inventory ─────────────────────────────────────────────────────── */
       // Creating an item opens its ledger with a purchase, so quantity and cost
       // are recorded as facts rather than as counters to be mutated later.
-      addItem: (bizId, { name, unitPrice, qty, unitCost }) => {
-        const item = makeItem({ name, unitPrice })
+      addItem: (bizId, { name, unitPrice, qty, unitCost, photoId }) => {
+        // `photoId` is a key into the biztrack-photos IndexedDB, never an
+        // image. This record is persisted to localStorage alongside the whole
+        // ledger, inside a ~5MB origin quota.
+        const item = makeItem({ name, unitPrice, photoId })
         const opening = makeStockMovement({
           itemId: item.id,
           delta: qty,
@@ -221,6 +229,79 @@ export const useStore = create(
         const state = deriveItemState((business?.stockMovements || []).filter((m) => m.itemId === sale.itemId))
         return { sale, item: item ? { ...item, ...state } : null }
       },
+
+      /* ── correcting a sale ─────────────────────────────────────────────── */
+      //
+      // A sale and its stock movement are ONE fact recorded twice: the money in
+      // `sales`, the units in `stockMovements`, joined by `saleId`. Editing the
+      // money without the units, or the units without the money, leaves the
+      // books and the shelf disagreeing with no way to tell which is right.
+      // Both actions below move the pair together, which is the whole reason
+      // they live here rather than being an `updateSale` the UI drives.
+
+      updateSale: (bizId, saleId, patch) =>
+        set((s) => ({
+          businesses: mapBusiness(s.businesses, bizId, (b) => {
+            const before = (b.sales || []).find((x) => x.id === saleId)
+            if (!before) return b
+            const after = touch({ ...before, ...patch })
+            return {
+              ...b,
+              sales: (b.sales || []).map((x) => (x.id === saleId ? after : x)),
+              // The movement follows the quantity and the cost. Its `delta` is
+              // negative because a sale takes stock OFF the shelf.
+              stockMovements: (b.stockMovements || []).map((m) =>
+                m.saleId === saleId
+                  ? { ...m, delta: -after.qty, unitCost: after.unitCost, occurredAt: after.occurredAt }
+                  : m),
+            }
+          }),
+        })),
+
+      // Soft on the sale so the tombstone can travel, and the movement is
+      // REMOVED rather than tombstoned: `deriveInventory` sums whatever
+      // movements it is given, so leaving one behind would keep the stock
+      // decremented for a sale that no longer exists.
+      deleteSale: (bizId, saleId) =>
+        set((s) => ({
+          businesses: mapBusiness(s.businesses, bizId, (b) => ({
+            ...b,
+            sales: (b.sales || []).map((x) => (x.id === saleId ? touch({ ...x, deletedAt: now() }) : x)),
+            stockMovements: (b.stockMovements || []).filter((m) => m.saleId !== saleId),
+          })),
+        })),
+
+      /* ── invoices ──────────────────────────────────────────────────────── */
+      //
+      // Deliberately nowhere near `recordSale`. An invoice is money ASKED FOR,
+      // and nothing in here may ever write into `sales`, because everything in
+      // `sales` is money the books say has arrived. Paying an invoice is the
+      // owner recording the sale in the ordinary way; this only remembers that
+      // the two belong together.
+
+      addInvoice: (bizId, input) => {
+        const invoice = makeInvoice(input)
+        set((s) => ({
+          businesses: mapBusiness(s.businesses, bizId, (b) => ({
+            ...b,
+            invoices: [invoice, ...(b.invoices || [])],
+          })),
+        }))
+        return invoice
+      },
+
+      updateInvoice: (bizId, invoiceId, patch) =>
+        set((s) => ({
+          businesses: mapBusiness(s.businesses, bizId, (b) => mapInvoice(b, invoiceId, (v) => ({ ...v, ...patch }))),
+        })),
+
+      // Soft, like every other delete here, so the tombstone can travel. A hard
+      // delete cannot sync: the other device cannot tell "deleted" from "not
+      // seen yet".
+      deleteInvoice: (bizId, invoiceId) =>
+        set((s) => ({
+          businesses: mapBusiness(s.businesses, bizId, (b) => mapInvoice(b, invoiceId, (v) => ({ ...v, deletedAt: now() }))),
+        })),
 
       /* ── bulk replace (import / rescue only) ───────────────────────────── */
       // The one remaining whole-array write. Restoring a backup genuinely does

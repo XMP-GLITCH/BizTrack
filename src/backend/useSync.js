@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../store/useStore.js";
 import { isBackendConfigured } from "./supabase.js";
 import { syncOnce } from "./sync.js";
+import { pushPhotos } from "./photoSync.js";
+import { flushFeedback } from "./feedback.js";
 
 /**
  * Drives the sync loop.
@@ -16,7 +18,10 @@ import { syncOnce } from "./sync.js";
 const INTERVAL_MS = 5 * 60 * 1000;
 
 export function useSync(userId, { paused = false } = {}) {
-  const [status, setStatus] = useState("idle"); // idle | syncing | synced | offline
+  // idle | syncing | synced | offline | failed. `failed` is NOT `offline`:
+  // one is a dead network, the other is the server refusing or our own code
+  // throwing, and conflating them is what hid a total outage for days.
+  const [status, setStatus] = useState("idle");
   const [lastError, setLastError] = useState(null);
   const running = useRef(false);
 
@@ -38,8 +43,17 @@ export function useSync(userId, { paused = false } = {}) {
       setSyncCursors({ lastPushedAt: result.lastPushedAt, lastPulledAt: result.lastPulledAt });
       setStatus("synced");
       setLastError(null);
+
+      // AFTER the ledger, never before, and never gating it. Photos are large
+      // and the books are what the trial and the whole product are about, so a
+      // slow or failing photo upload must not delay or break a sale reaching
+      // the server. It is also not awaited into the status: `status` means
+      // "are my books safe", and a pending photo should not make it say no.
+      pushPhotos(userId);
+      // Cheap, and this is the moment we know there is a connection.
+      flushFeedback();
     } else {
-      setStatus(result.reason === "offline" ? "offline" : "idle");
+      setStatus(result.reason === "offline" ? "offline" : "failed");
       setLastError(result.error ?? null);
     }
     running.current = false;

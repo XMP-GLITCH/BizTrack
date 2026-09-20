@@ -4,38 +4,25 @@ import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './analytics/ErrorBoundary.jsx'
 import { readSnapshot } from './store/useStore'
+import { emergencyExport } from './utils/transfer'
 
 /**
- * Last-resort export, available even when React has crashed.
- *
- * Reads storage directly rather than going through the store, because the
- * boundary may be catching a fault in exactly that layer. A user staring at a
- * crash screen must still be able to walk away with their books.
+ * Last-resort export, available even when React has crashed. The work is in
+ * `utils/transfer` so the crash screen inside App.jsx runs the same code: it
+ * used to offer the same button wired to a different, much narrower function.
  */
-function emergencyExport() {
-  try {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      reason: 'crash-recovery',
-      live: JSON.parse(localStorage.getItem('biztrack-storage-v3') || 'null'),
-      preUpgrade: readSnapshot(),
-    }
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
-    )
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `BizTrack_Recovery_${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch {
-    alert('Could not build the file. Your data is still in this browser — do not clear its storage.')
-  }
+function exportOrExplain() {
+  if (emergencyExport(readSnapshot)) return
+  // The one native alert left in the app, and it stays on purpose. Every
+  // other one became a toast or a dialog, both of which are React. This
+  // fires when React has already crashed, so the app's own machinery is
+  // exactly what cannot be trusted to render the message.
+  alert('Could not build the file. Your data is still in this browser. Do not clear its storage.')
 }
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ErrorBoundary onExport={emergencyExport}>
+    <ErrorBoundary onExport={exportOrExplain}>
       <App />
     </ErrorBoundary>
   </StrictMode>,

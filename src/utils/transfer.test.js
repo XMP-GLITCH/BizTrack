@@ -6,7 +6,7 @@ import { parseBackup } from "../domain/migrate.js";
 
 /**
  * Transfer is how someone moves their books to a new phone, and the only route
- * across a domain change — browser storage is per-origin, so books saved at one
+ * across a domain change: browser storage is per-origin, so books saved at one
  * address are invisible at another.
  *
  * The guarantee worth testing is the round trip: a file this module writes must

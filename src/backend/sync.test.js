@@ -140,7 +140,7 @@ test("stock movements never duplicate when the same sync runs twice", () => {
   assert.equal(deriveInventory(twice[0])[0].qty, deriveInventory(local[0])[0].qty);
 });
 
-test("merging is idempotent — re-syncing changes nothing", () => {
+test("merging is idempotent: re-syncing changes nothing", () => {
   const local = [{ ...biz(), items: [item()], sales: [sale()], stockMovements: [move()] }];
   const remote = [{ ...biz(), items: [item()], sales: [sale({ id: "s-remote" })], stockMovements: [move({ id: "m-remote", delta: -1, reason: "sale" })] }];
 

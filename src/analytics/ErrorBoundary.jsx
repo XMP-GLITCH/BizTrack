@@ -7,7 +7,7 @@ import { track, flush } from "./analytics.js";
  * The fallback matters more here than in most products. A white screen in a
  * bookkeeping app that holds someone's only records reads as "my books are
  * gone", and the support message that follows is panic. So the first thing it
- * says is that nothing was lost, and it offers the export before the reload —
+ * says is that nothing was lost, and it offers the export before the reload;
  * the reload is what someone does instinctively, and it should not be the only
  * option offered before they have a copy.
  *
@@ -48,7 +48,7 @@ export default class ErrorBoundary extends Component {
               Something broke on this screen
             </h1>
             <p style={{ fontSize: 14, lineHeight: 1.65, margin: "0 0 8px" }}>
-              <strong>Your records are safe.</strong> Nothing was deleted — this is a display
+              <strong>Your records are safe.</strong> Nothing was deleted. This is a display
               problem, and everything you recorded is still stored on this device.
             </p>
             <p style={{ fontSize: 13, lineHeight: 1.6, color: "#9B7B5E", margin: "0 0 20px" }}>

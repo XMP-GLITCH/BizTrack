@@ -36,12 +36,13 @@ export function collectChanges(businesses, since) {
     sales: (b.sales || []).filter((s) => newer(s.updatedAt)),
     // Movements are immutable, so their creation time is their only watermark.
     stockMovements: (b.stockMovements || []).filter((m) => newer(m.createdAt || m.occurredAt)),
+    invoices: (b.invoices || []).filter((v) => newer(v.updatedAt)),
   }));
 
   // A business is worth pushing if it changed itself or has changed children;
   // its parent row must go first anyway to satisfy the foreign keys.
   return dirty.filter((b) =>
-    newer(b.updatedAt) || b.items.length || b.sales.length || b.stockMovements.length);
+    newer(b.updatedAt) || b.items.length || b.sales.length || b.stockMovements.length || b.invoices.length);
 }
 
 const newest = (a, b) => (String(a?.updatedAt || "") >= String(b?.updatedAt || "") ? a : b);
@@ -82,6 +83,12 @@ export function mergeBusinesses(local, incoming) {
       sales: mergeById(mine.sales, remote.sales).sort(
         (a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt))),
       stockMovements: unionById(mine.stockMovements, remote.stockMovements),
+      // Mutable, like items and sales: an invoice gets marked paid, so the
+      // newer of the two wins rather than the union keeping whichever arrived
+      // first. Without this line a "paid" recorded on one phone would be
+      // dropped silently on the other.
+      invoices: mergeById(mine.invoices, remote.invoices).sort(
+        (a, b) => String(b.issuedAt).localeCompare(String(a.issuedAt))),
     });
   }
 
@@ -92,8 +99,35 @@ export function mergeBusinesses(local, incoming) {
 
 const CHUNK = 500;
 
+/**
+ * Is this the network failing to answer, or the server answering with a no?
+ *
+ * They are different events and must never be reported as the same one. Being
+ * unreachable is the NORMAL state for this audience and deserves a quiet
+ * retry. A refusal, or a fault in our own code, is a DEFECT -- and calling it
+ * a connection problem sends someone to check their signal while their books
+ * quietly fail to arrive.
+ *
+ * That exact mislabelling hid a total sync outage from every account on this
+ * project for days: the screen said "waiting for a connection" while the
+ * server was answering 403 every five minutes, on time, without fail.
+ */
+function looksOffline(err) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  // What `fetch` throws when it cannot reach the host at all. The wording
+  // differs across Chrome, Firefox and Safari, so match the shape. A
+  // TypeError from OUR OWN code (reading a property of undefined, say) is
+  // also a TypeError and must NOT be mistaken for a dead network.
+  return err instanceof TypeError && /fetch|network|load failed/i.test(String(err?.message || ""));
+}
+
 async function upsertAll(table, rows) {
-  for (let i = 0; i < rows.length; i += CHUNK) {
+  // A missing row set is an empty one, not a crash. `flattenBusinesses` once
+  // omitted `invoices` from its accumulator, so this was called with
+  // `undefined` and threw on `.length` -- after four tables had already been
+  // written, before the pull ran, and before any cursor advanced. One absent
+  // key took the whole sync down for everybody.
+  for (let i = 0; i < (rows?.length ?? 0); i += CHUNK) {
     // Upsert on the primary key: ids are client-generated, so a retry after a
     // dropped connection updates the same row instead of duplicating a sale.
     const { error } = await supabase.from(table).upsert(rows.slice(i, i + CHUNK), { onConflict: "id" });
@@ -112,8 +146,12 @@ export async function pushChanges({ businesses, userId, since }) {
   await upsertAll("items", flat.items);
   await upsertAll("sales", flat.sales);
   await upsertAll("stock_movements", flat.movements);
+  // Last, and referencing nothing but its business: an invoice deliberately
+  // does not point at a sale row, only at a sale GROUP, which is a plain string.
+  await upsertAll("invoices", flat.invoices);
 
-  const count = flat.businesses.length + flat.items.length + flat.sales.length + flat.movements.length;
+  const count = flat.businesses.length + flat.items.length + flat.sales.length
+    + flat.movements.length + flat.invoices.length;
   return { pushed: count, at: new Date().toISOString() };
 }
 
@@ -128,20 +166,21 @@ async function selectSince(table, since) {
 export async function pullChanges({ since }) {
   if (!isBackendConfigured) return { businesses: [], at: since };
 
-  // RLS scopes all four queries to businesses this user is a member of.
-  const [businesses, items, sales, movements] = await Promise.all([
+  // RLS scopes every query to businesses this user is a member of.
+  const [businesses, items, sales, movements, invoices] = await Promise.all([
     selectSince("businesses", since),
     selectSince("items", since),
     selectSince("sales", since),
     selectSince("stock_movements", since),
+    selectSince("invoices", since),
   ]);
 
   return {
-    businesses: assembleBusinesses({ businesses, items, sales, movements }),
+    businesses: assembleBusinesses({ businesses, items, sales, movements, invoices }),
     at: new Date().toISOString(),
     counts: {
       businesses: businesses.length, items: items.length,
-      sales: sales.length, movements: movements.length,
+      sales: sales.length, movements: movements.length, invoices: invoices.length,
     },
   };
 }
@@ -168,9 +207,13 @@ export async function syncOnce({ businesses, userId, lastPushedAt, lastPulledAt 
       pulled: pull.counts,
     };
   } catch (err) {
-    // Offline is the normal case here, not an exception. Local data is
-    // untouched and the same cursors retry on the next attempt.
-    console.warn("[BizTrack] Sync deferred:", err.message);
-    return { ok: false, reason: "offline", error: err.message, businesses };
+    // Local data is untouched either way and the same cursors retry next time.
+    // What changes is what we CALL it: being offline is the normal case and is
+    // deferred quietly; anything else is a fault and says so, loudly enough to
+    // find in a console a week later.
+    const offline = looksOffline(err);
+    if (offline) console.warn("[BizTrack] Sync deferred (offline):", err.message);
+    else console.error("[BizTrack] Sync FAILED (not a connection problem):", err.message);
+    return { ok: false, reason: offline ? "offline" : "failed", error: err.message, businesses };
   }
 }

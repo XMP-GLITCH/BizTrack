@@ -1,9 +1,9 @@
 # Connecting BizTrack to Supabase
 
 Everything in this repo is written and tested; what remains needs your Supabase
-account. Two paths — pick either. Both take about five minutes.
+account. Two paths, pick either. Both take about five minutes.
 
-## Path A — CLI (recommended, one command applies all migrations)
+## Path A: CLI (recommended, one command applies all migrations)
 
 ```sh
 npx supabase login                          # opens a browser
@@ -13,7 +13,7 @@ npx supabase db push                        # applies supabase/migrations/*
 
 `supabase/config.toml` is already committed, so `link` and `push` work as-is.
 
-## Path B — Dashboard (no CLI)
+## Path B: Dashboard (no CLI)
 
 Open your project → **SQL Editor**, and run these three files **in order**:
 
@@ -62,13 +62,13 @@ In the dashboard, Table Editor should list six tables: `profiles`,
 The RLS suite runs against local Postgres. To sanity-check the deployed
 policies, create two accounts in your project, sign in as each, and confirm
 neither can see the other's businesses. If both see everything, RLS did not get
-enabled — re-run `20260906000200_rls.sql`.
+enabled, re-run `20260906000200_rls.sql`.
 
 ## What was verified before you got here
 
 Against a real PostgreSQL 16 running these exact migration files:
 
-- **35 RLS tests**, each asserted in both directions — the owner can reach their
+- **35 RLS tests**, each asserted in both directions: the owner can reach their
   data, another user cannot. Covers cross-user reads on every table, writes into
   another user's business, ownership reassignment, staff privilege limits,
   anonymous access, and the `SECURITY DEFINER` helper that stops a policy on
@@ -79,7 +79,7 @@ Against a real PostgreSQL 16 running these exact migration files:
   on hand and weighted average cost all return identical.
 
 What could **not** be verified from the build environment is the live service
-itself — GoTrue auth, PostgREST, and the network round trip to
-`*.supabase.co` — because outbound access to Supabase is blocked there. Expect
+itself (GoTrue auth, PostgREST, and the network round trip to
+`*.supabase.co`) because outbound access to Supabase is blocked there. Expect
 to shake out ordinary integration details (redirect URLs, email confirmation
 settings) on first connection.

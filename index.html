@@ -6,13 +6,34 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!--
+      Pinch zoom is OFF on purpose. This is a PWA people install and use as
+      their till, and an app that zooms when a thumb brushes it does not feel
+      like one. Do not "fix" this as an oversight -- it was a product decision.
+
+      Two notes for whoever reads this next:
+
+        * iOS Safari has ignored user-scalable=no since iOS 10, deliberately,
+          so this only actually binds on Android. Android's own "Force enable
+          zoom" accessibility setting overrides it too, which is the escape
+          hatch for anyone who genuinely needs magnification.
+        * It is NOT what stops iOS zooming into a form field on focus. That is
+          governed by the input's font-size, and the fix is that inputs are
+          16px (below 16 iOS zooms regardless of this line). Keep them at 16.
+
+      viewport-fit=cover is unrelated and must stay: it is what makes
+      env(safe-area-inset-*) return real numbers, which is what keeps the
+      bottom nav clear of the Android gesture bar and the iOS home indicator.
+      It only works together with the padding in App.jsx -- on its own it would
+      push content UNDER the notch instead of clear of it.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#2C1810" />
-    <title>BizTrack — Inventory, Sales &amp; Profit</title>
+    <title>BizTrack: Inventory, Sales &amp; Profit</title>
 
     <!--
       Link preview tags. The distribution plan is direct conversations, and in
-      this market that means WhatsApp — which builds its preview card entirely
+      this market that means WhatsApp, which builds its preview card entirely
       from Open Graph. Without these a shared link is a bare URL, which is
       exactly the thing people do not tap.
 
@@ -24,15 +45,15 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="BizTrack" />
     <meta property="og:url" content="https://biztrack.store/" />
-    <meta property="og:title" content="BizTrack — know what your business is really making" />
-    <meta property="og:description" content="Track your stock, record every sale, and see real profit — not just money coming in. Works offline, on the phone you already have." />
+    <meta property="og:title" content="BizTrack: know what your business is really making" />
+    <meta property="og:description" content="Track your stock, record every sale, and see real profit, not just money coming in. Works offline, on the phone you already have." />
     <meta property="og:image" content="https://biztrack.store/pwa-512x512.png" />
     <meta property="og:image:width" content="512" />
     <meta property="og:image:height" content="512" />
     <meta property="og:image:alt" content="BizTrack" />
 
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="BizTrack — know what your business is really making" />
+    <meta name="twitter:title" content="BizTrack: know what your business is really making" />
     <meta name="twitter:description" content="Track your stock, record every sale, and see real profit. Works offline." />
     <meta name="twitter:image" content="https://biztrack.store/pwa-512x512.png" />
     
@@ -46,6 +67,42 @@
             if (isDark) document.documentElement.classList.add('dark');
           } catch(e) {}
         }
+      })();
+    </script>
+
+    <!--
+      Has this person been here before? Answered BEFORE the first paint, so a
+      returning user never sees a flash of the landing page on the way to their
+      books.
+
+      Two keys mean "been here": a supabase session, and the ledger itself. The
+      session key carries the project ref, so it is matched by suffix rather
+      than spelled out -- a ref in two files is a ref that can disagree.
+
+      The catch shows the landing, which is the safe default: a private window
+      throws on localStorage, and a first-time visitor is exactly who the
+      landing is for.
+
+      THE INSTALLED APP IS THE REASON THIS RUNS AT ALL. `start_url` is "/", so
+      an installed PWA opens this document; without the check it would open a
+      marketing page instead of the till. Changing `start_url` later does not
+      remove the need for this, because an app installed before that change
+      keeps the old one forever.
+    -->
+    <script>
+      (function () {
+        // `?landing` forces it on. The owner of this app can otherwise NEVER
+        // see their own landing page: their browser holds their books, so the
+        // check below hides it every time, and checking marketing copy would
+        // mean clearing site data or opening a private window on every edit.
+        // A page nobody can look at is a page that quietly goes stale.
+        if (location.search.indexOf("landing") !== -1) return;
+        try {
+          var been = Object.keys(localStorage).some(function (k) {
+            return k === "biztrack-storage-v3" || k.slice(-11) === "-auth-token";
+          });
+          if (been) document.documentElement.className += " bt-returning";
+        } catch (e) {}
       })();
     </script>
 
@@ -72,8 +129,586 @@
       }
       @keyframes slide { 0% { transform: translateX(-120%); } 100% { transform: translateX(250%); } }
       
-      /* Hide splash when root is filled */
-      body.app-loaded #splash-screen { opacity: 0; visibility: hidden; }
+      /* Hide splash when root is filled.
+
+         `visibility: hidden` alone leaves both `infinite` animations below
+         running for the rest of the session, on an element nobody can see.
+         Stopping them is separate from hiding it, and it has to be separate
+         from `display: none` too, or the 0.4s fade has nothing to fade. App.jsx
+         removes the node once that fade is done. */
+      body.app-loaded #splash-screen { opacity: 0; visibility: hidden; pointer-events: none; }
+      body.app-loaded .logo-box,
+      body.app-loaded .loading-fill { animation: none; }
+
+      /*
+        THE LANDING PAGE.
+
+        Static HTML and CSS in this document rather than a route, and that is
+        the whole design. Three reasons, in order of how much they matter here:
+
+          * It paints with the HTML. A first-time visitor arriving from a
+            WhatsApp link on a slow connection reads what BizTrack is while the
+            166KB of app is still arriving, instead of watching a splash.
+          * No routing change, so `start_url`, the service worker scope and the
+            per-origin localStorage that this project's whole rescue history
+            comes from are all untouched.
+          * The app boots underneath it. By the time anyone taps Get started,
+            the sign-in screen is already mounted.
+
+        It is on the permanently dark ground, like the sign-in screen it leads
+        to, which is why it needs no theme handling: `--focus-ground` is the
+        same value in both themes by design.
+
+        THE PICTURES ARE THE REAL APP. Not illustrations, not a 3D render, not
+        stock photography of someone smiling at a laptop: `shot-home.webp` and
+        `shot-analytics.webp` are screenshots of this build, captured by
+        `scratchpad/marketing.mjs` from seeded books. WebP straight out of CDP,
+        65KB for both, because a hero image heavier than the app would undo the
+        one thing this page is for.
+      */
+      #landing {
+        position: fixed; inset: 0; z-index: 10000; overflow-y: auto;
+        /* The hero glow is a 560px circle centred on a column that is 320px
+           wide on the narrowest phone, so it reaches 120px past the right
+           edge. `overflow-y: auto` resolves the OTHER axis to `auto` as well,
+           so this was a landing page a thumb could drag sideways: measured,
+           scrollWidth 440 in a 320px window.
+
+           Two reasons it went unseen, both worth knowing. Every overflow check
+           in this project walks ELEMENTS, and a ::before is not one. And the
+           obvious test -- set `scrollLeft` and read it back -- answers the
+           wrong question twice over: `scroll-behavior: smooth` makes the read
+           come back 0 while the scroll is still animating, and an
+           `overflow: hidden` box is still scrollable from script by spec, so
+           it answers `true` for a page nobody can move. What a thumb can do is
+           `overflow-x` being auto or scroll AND scrollWidth > clientWidth. */
+        overflow-x: hidden;
+        background: #2C1810; color: #FAF8F4;
+        font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .bt-returning #landing { display: none; }
+      /* 24px gutter, the same one every screen in the app uses. The vertical
+         padding belongs to the BAND now, not the column. */
+      #landing .wrap { max-width: 460px; margin: 0 auto; padding: 0 24px; }
+
+      /*
+        BANDS, and why this is the biggest change on the page.
+        Measured before: ONE flat ground for 2,022px, three <hr> rules doing the
+        section breaks, and four consecutive gaps of exactly 56px. That is the
+        squint test failing three ways at once -- nothing leads, nothing is
+        grouped, and separation is drawn with lines instead of space.
+        The second ground is the APP'S OWN CREAM. Not a neutral picked to look
+        expensive: #FAF8F4 is the colour of the product, so the middle of the
+        page reads as a page out of BizTrack rather than as a section of a
+        template. It is also why no rule is needed between bands -- the ground
+        changing IS the break.
+      */
+      #landing .band { padding: 52px 0; }
+      #landing .band-hero { padding-top: 24px; padding-bottom: 44px; }
+      #landing .band-paper {
+        background: #FAF8F4;
+        color: #2C1810;
+      }
+      #landing .band-paper h2 { color: #2C1810; }
+      #landing .band-paper .lede,
+      #landing .band-paper .trust { color: rgba(44,24,16,0.72); }
+      #landing .band-paper .eyebrow { color: #A5603A; }
+      /* 0.5 measured 3.25 at 12px, under the 4.5 AA asks for normal text. */
+      #landing .band-paper .foot { color: rgba(44,24,16,0.62); }
+      #landing .band-paper .trust a { color: #A5603A; }
+      /* NO WASH on the paper band, and that is a contrast decision rather
+         than a visual one. `#A5603A` is this project's ratified accent-as-text
+         and measures 4.57 against the PAGE; over a 3% dark wash the eyebrow
+         inside this box dropped to 4.30, under AA. The 1px border is what
+         makes it a box anyway -- the wash was carrying almost no ink and
+         costing a measured colour the ground it was measured on. */
+      #landing .band-paper .beta { border-color: rgba(44,24,16,0.18); background: none; }
+      #landing .band-paper .beta b { color: #A5603A; }
+      #landing .band-paper .beta p { color: rgba(44,24,16,0.75); }
+      /* The button is painted in the page's ink, so on the other ground it has
+         to swap or it is cream on cream. */
+      #landing .band-paper .go { background: #2C1810; color: #FAF8F4; }
+      #landing .band-paper .alt { color: rgba(44,24,16,0.72); }
+
+      /*
+        THE BAR.
+
+        The page had no persistent chrome at all: a logo, a headline, then a
+        long scroll with the way in only at the very top and the very bottom.
+        A bar is most of what makes a page read as a product rather than as a
+        document, and it keeps both ways in reachable from anywhere on it.
+
+        Sticky rather than fixed, and SOLID rather than blurred. A
+        backdrop-filter is a per-frame composite on phones chosen for being
+        cheap, and this page's only argument is that it is light.
+      */
+      #landing { scroll-behavior: smooth; }
+      #landing .nav {
+        position: sticky; top: 0; z-index: 2;
+        background: #2C1810;
+        border-bottom: 1px solid rgba(250,248,244,0.08);
+      }
+      #landing .navIn {
+        max-width: 460px; margin: 0 auto; padding: 8px 24px;
+        display: flex; align-items: center; gap: 6px;
+      }
+      #landing .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+      #landing .brand b { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+      /* The mark lives in the bar now. It used to be a 52px tile above the
+         headline, which is a logo standing in for chrome that was not there.
+         No tile and no fill: the disc IS the mark. */
+      #landing .mark { display: block; flex-shrink: 0; }
+      /* Two real destinations on this page, shown only where there is room for
+         them. Anything else would be navigation invented to fill a bar. */
+      #landing .navLinks { display: none; }
+      #landing .navLinks a {
+        color: rgba(250,248,244,0.7); text-decoration: none;
+        font-size: 14px; font-weight: 500;
+      }
+      #landing .navLinks a:hover { color: #FAF8F4; }
+      #landing .navSignin {
+        border: none; background: none; font-family: inherit; cursor: pointer;
+        color: rgba(250,248,244,0.75); font-size: 14px; font-weight: 600;
+        padding: 0 10px; min-height: 44px;
+      }
+      #landing .navGo {
+        border: none; font-family: inherit; cursor: pointer;
+        background: #FAF8F4; color: #2C1810; font-size: 14px; font-weight: 600;
+        border-radius: 10px; padding: 0 16px; min-height: 44px;
+      }
+      /* The sticky bar would otherwise sit on top of whatever an anchor
+         scrolled to. */
+      #landing [id] { scroll-margin-top: 76px; }
+      /* Under 8 words and about 44 characters, which is what a phone reads in
+         one glance. "Know what your business is really making." is 7 and 40. */
+      #landing h1 {
+        font-size: 32px; line-height: 1.15; font-weight: 700; letter-spacing: -1px;
+        margin: 0 0 12px;
+      }
+      /* Two tones in one headline: the setup recedes and the payload leads.
+         It costs one span and it is the cheapest hierarchy on the page, which
+         otherwise has one weight and one colour from top to bottom. The bright
+         half is "really making" because that is the whole claim. */
+      #landing h1 .dim { color: rgba(250,248,244,0.52); }
+      #landing .sub { font-size: 16px; line-height: 1.5; color: rgba(250,248,244,0.75); margin: 0 0 24px; }
+
+      /* The CTA sits ABOVE the picture so it is above the fold on a phone, and
+         the picture starts just below it, which is what pulls the scroll. */
+      #landing .go {
+        display: block; width: 100%; min-height: 52px; border: none; border-radius: 12px;
+        background: #FAF8F4; color: #2C1810; font-size: 16px; font-weight: 600;
+        font-family: inherit; cursor: pointer; margin-bottom: 10px;
+      }
+      #landing .alt {
+        display: block; width: 100%; min-height: 46px; border: none; background: none;
+        color: rgba(250,248,244,0.75); font-size: 14px; font-weight: 600;
+        font-family: inherit; cursor: pointer;
+      }
+      #landing .heroNote {
+        margin: 28px 0 0; font-size: 13px; line-height: 1.5;
+        color: rgba(250,248,244,0.55);
+      }
+      /* The floating chart overhangs the text column by ~148px at this
+         breakpoint, and this line sits at exactly its height, so without a cap
+         the sentence ran underneath it. The note stops short of the fragment
+         instead of the fragment moving: it is the fragment's position that was
+         measured against the phone. */
+      @media (min-width: 1024px) { #landing .heroNote { max-width: 400px; } }
+      #landing .heroNote b { color: rgba(250,248,244,0.8); font-weight: 600; }
+
+      /* A phone, drawn in CSS. The screenshot already has the app's own cream
+         ground, so the frame is one hairline and a radius rather than a bezel
+         image nobody needs to download. */
+      #landing .phone {
+        margin: 28px auto 0; width: 262px; max-width: 100%;
+        border-radius: 26px; overflow: hidden;
+        border: 1px solid rgba(250,248,244,0.16);
+        box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+      }
+      #landing .phone img { display: block; width: 100%; height: auto; }
+
+      /*
+        THE PHONE IS A DEMO, NOT A PICTURE.
+
+        Three real screens, and the app's own bottom bar is the control: tap
+        Analytics in the picture and the picture becomes the Analytics screen.
+        A stranger can see what the thing does before giving anyone an email.
+
+        WHY NOT RUN THE REAL APP HERE. It was the first idea and it is the
+        dangerous one. localStorage is per ORIGIN, so demo books seeded at
+        biztrack.store are written into the same key a real user's books live
+        in, and the pre-paint check above would then read them as "returning
+        user" forever -- an installed till full of somebody else's rice. That
+        is the exact shape of this project's whole v1.5.3 to v1.5.7 rescue
+        history. Accounts are also mandatory now, so there would be no app to
+        show without writing a forged session into a stranger's browser.
+
+        THE HIT AREAS ARE MEASURED, not placed by eye. `marketing.mjs` prints
+        them beside the capture, so the picture and the zones cannot disagree;
+        re-run it and paste the line. Each is an equal third because the app's
+        own bar is `flex: 1`, which is why these read 6.15 / 35.38 / 64.62.
+
+        They run to the BOTTOM of the image rather than stopping at the bar's
+        own height: 7.19% of a 262px-wide phone is 38.7px, under the 44px
+        minimum, and the only thing below the bar is the safe-area strip. The
+        floating Sale button sits at about 84%, clear of the top edge here.
+
+        NOTHING IS DOWNLOADED UNTIL SOMEBODY TAPS. The other two screens are
+        32KB and 35KB, which is real money on this audience's connections, so
+        they are fetched on the tap that asks for them and never before.
+      */
+      #landing .demo { position: relative; }
+      #landing .demo img { transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+      #landing .demo.loading img { opacity: 0.4; }
+      #landing .demoTab {
+        position: absolute;
+        border: 0; background: none; padding: 0; margin: 0;
+        cursor: pointer; -webkit-tap-highlight-color: transparent;
+      }
+      /* The press feedback is a tint INSIDE the zone rather than on it, so the
+         44px target can stay larger than the mark it draws. The screenshots
+         are light whatever theme the page is in, so the tint is the app's ink
+         and not the page's. */
+      #landing .demoTab::after {
+        content: ""; position: absolute; inset: 6px 4px; border-radius: 12px;
+        background: rgba(44,24,16,0); transition: background 120ms linear;
+      }
+      #landing .demoTab:active::after { background: rgba(44,24,16,0.14); }
+      @media (hover: hover) {
+        #landing .demoTab:hover::after { background: rgba(44,24,16,0.07); }
+      }
+      #landing .demoTab:focus-visible { outline: 2px solid #E9B08C; outline-offset: -2px; }
+      /* Without this nobody knows the picture answers. A dead control that
+         advertises itself is the failure this project has already shipped
+         once, in a drag handle that did not drag. */
+      #landing .demoHint {
+        margin: 10px 0 0; font-size: 12px; line-height: 1.4; text-align: center;
+        color: rgba(250,248,244,0.5);
+      }
+
+      /*
+        THE FRAGMENT, and it is a DESKTOP-ONLY download.
+
+        A second real crop -- the weekly profit chart, lifted out of the same
+        books the phone beside it is showing -- floating clear of the phone so
+        the hero has depth rather than one flat rectangle.
+
+        It has to say something the phone does NOT. The first attempt cropped
+        the profit card, which is the largest thing on the Home screenshot
+        already, and the desktop hero came out showing one card twice, 200px
+        apart. A fragment that repeats its neighbour is not depth.
+
+        It is a `background-image` inside the 1024 media query on purpose: a
+        browser only fetches a background whose rule matches, so a phone never
+        pays for it. An <img> would download on every device and then be
+        hidden, which is the worst of both.
+      */
+      #landing .heroArt { position: relative; }
+      #landing .phoneWrap { position: relative; }
+      #landing .frag { display: none; }
+
+      #landing hr { border: none; border-top: 1px solid rgba(250,248,244,0.1); margin: 40px 0; }
+
+      /* 22 was the only heading size on the page and the hero was 64, so
+         below the fold there was no spine at all. Tracking tightens with the
+         size, which is the app's own typography rule. */
+      #landing h2 {
+        font-size: 27px; line-height: 1.2; font-weight: 700; letter-spacing: -0.9px;
+        margin: 0 0 10px;
+      }
+      /* The accent gets ONE job per band: naming what the band is. Measured
+         before, 5% of the ink on this page was anything but plain body
+         colour, which is an accent that means nothing. */
+      #landing .eyebrow {
+        margin: 0 0 12px; font-size: 11px; font-weight: 600;
+        letter-spacing: 1.2px; text-transform: uppercase; color: #E9B08C;
+      }
+      #landing .lede { font-size: 15px; line-height: 1.5; color: rgba(250,248,244,0.7); margin: 0 0 20px; }
+
+      /*
+        NO TICK GRID.
+        Four ticks in a 2x2 with a bold label and a grey sentence is the single
+        most templated block on the web, and it was doing the work of showing
+        that this app has opinions. These are ledger ROWS instead -- the app's
+        own list idiom, a hairline between each, hierarchy from weight and
+        colour rather than from a decorative mark.
+        The number is a real distinction, not an ornament: it is the same
+        terracotta index the Analytics rank discs use, so the page and the
+        product are marking rank the same way.
+      */
+      #landing ul { list-style: none; padding: 0; margin: 0; }
+      #landing li {
+        display: grid; grid-template-columns: 30px minmax(0, 1fr);
+        gap: 0 14px; align-items: baseline;
+        padding: 18px 0; border-top: 1px solid rgba(44,24,16,0.12);
+      }
+      #landing ul { border-bottom: 1px solid rgba(44,24,16,0.12); }
+      #landing li i {
+        font-style: normal; font-size: 12px; font-weight: 600;
+        font-variant-numeric: tabular-nums; letter-spacing: 0.4px;
+        color: #A5603A;
+      }
+      #landing li b { display: block; font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+      #landing li span {
+        grid-column: 2; display: block; margin-top: 4px;
+        font-size: 14px; line-height: 1.5; color: rgba(44,24,16,0.68);
+      }
+
+      /* A crop of the real screen, on its own light card so it reads as a
+         quotation from the app rather than as page furniture. */
+      #landing .shot {
+        border-radius: 14px; overflow: hidden; margin: 0 0 8px;
+        border: 1px solid rgba(250,248,244,0.14);
+      }
+      #landing .shot img { display: block; width: 100%; height: auto; }
+      #landing .cap { font-size: 12px; line-height: 1.5; color: rgba(250,248,244,0.5); margin: 0; }
+
+      #landing .beta {
+        border: 1px solid rgba(250,248,244,0.18); border-radius: 16px;
+        padding: 16px; background: rgba(250,248,244,0.04);
+      }
+      #landing .beta b { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.6px;
+        text-transform: uppercase; color: #E9B08C; margin-bottom: 6px; }
+      #landing .beta p { margin: 0; font-size: 14px; line-height: 1.5; color: rgba(250,248,244,0.78); }
+
+      /* The <hr> that used to sit between these two is gone, so the gap it
+         supplied has to come from somewhere. */
+      #landing .closeSec > .beta { margin-bottom: 40px; }
+      #landing .closeSec h2 { margin-top: 0; }
+      #landing .trust { font-size: 14px; line-height: 1.55; color: rgba(250,248,244,0.7); margin: 0; }
+      #landing .trust a { color: #E9B08C; }
+      #landing .foot { margin: 24px 0 0; font-size: 12px; line-height: 1.5; color: rgba(250,248,244,0.45); }
+
+      /*
+        THE FULL LOCKUP, on the ground it was drawn for.
+        `wordmark-light.png` is the real logo -- the disc plus the serif
+        wordmark -- and the "light" in its name means light BACKGROUND: it is
+        dark ink with a transparent surround, so it can only go on the cream
+        band. On the dark bar it would be invisible, which is why the nav gets
+        the vector disc instead of this file.
+        It is also the one place a serif is allowed. The app's rule against a
+        display serif is about the TYPE SYSTEM; a wordmark is a picture of a
+        name, and this one is the name.
+      */
+      #landing .signoff {
+        display: block; width: 124px; height: auto; margin: 40px 0 0;
+        opacity: 0.85;
+      }
+
+      /*
+        THE FOOTER.
+        Back to the dark ground, which bookends the page with the bar it opens
+        on and keeps the alternation honest: dark, paper, dark, paper, dark.
+        Tighter than a band -- a footer is fine print, not a section -- and it
+        carries no second logo, because the wordmark sign-off is directly above
+        it and two marks in a row is one mark too many.
+      */
+      /* `.band.footer`, not `.footer`: the responsive blocks set `.band`
+         padding at 88 and 104 and come later in the file, so at equal
+         specificity they won and this strip was 227px tall for one line. */
+      #landing .band.footer { padding: 26px 0; font-size: 12px; line-height: 1.6; }
+      #landing .footerIn {
+        display: flex; flex-wrap: wrap; gap: 4px 20px;
+        justify-content: space-between; align-items: baseline;
+        /* 0.5, not 0.45: 0.45 measured 4.21 at 12px and AA wants 4.5. This is
+           the same alpha the demo hint already spends, measured at 4.89. */
+        color: rgba(250,248,244,0.5);
+      }
+      #landing .footerIn b { color: rgba(250,248,244,0.72); font-weight: 600; }
+
+      #landing button:active { transform: scale(0.98); filter: brightness(0.95); }
+
+      /*
+        MOTION.
+
+        The app's own rule is 90/160/240/400ms and nothing longer, because it is
+        a till read at a stall with a customer waiting and past ~250ms an
+        animation reads as the phone being slow. **That rule is about the app.**
+        This page is read once, by a stranger, before they own anything, so it
+        can afford a slower hand. What it cannot afford is jank: same cheap
+        Android phones, so only `opacity` and `transform` move, both composited,
+        and nothing here animates forever.
+
+        NOTHING LOOPS, and that is deliberate rather than plain. This project
+        already shipped an infinite animation running for a whole session behind
+        an invisible element, on phones chosen for being cheap. A landing page
+        with a permanently breathing element is that same mistake wearing
+        marketing clothes.
+
+        THE HIDE IS GATED ON A CLASS JS ADDS. Without `bt-anim` on <html>
+        nothing below matches, so a browser that never ran the script, or ran it
+        and threw, shows the whole page at full opacity. Hiding content in CSS
+        and revealing it in JS is how a page ends up blank for the people with
+        the worst connections, which is this page's entire audience.
+      */
+      .bt-anim #landing [data-reveal] {
+        opacity: 0;
+        transform: translateY(16px);
+        transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1),
+                    transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+        transition-delay: calc(var(--d, 0) * 70ms);
+      }
+      .bt-anim #landing [data-reveal].in { opacity: 1; transform: none; }
+
+      /* The hero's own glow. Static, not animated: it is depth, not movement,
+         and it costs one paint rather than a frame budget. */
+      #landing .band-hero .wrap { position: relative; }
+      #landing .band-hero .wrap::before {
+        content: "";
+        position: absolute; top: -160px; left: 50%; width: 560px; height: 560px;
+        transform: translateX(-50%); pointer-events: none; z-index: -1;
+        background: radial-gradient(circle, rgba(193,127,90,0.20), rgba(193,127,90,0) 68%);
+      }
+
+      /*
+        DESKTOP.
+
+        Measured before this existed: at 1280 the page used **36%** of the
+        screen and at 1680 it used 27%, with the phone screenshot sitting BELOW
+        the headline and 610px of empty page beside it. That is a phone column
+        centred, not a desktop page, and the app itself has had breakpoints at
+        700 and 1024 since the responsive work.
+
+        These are the SAME two breakpoints, deliberately. A landing page that
+        reflows at widths the app does not is a second system to keep in step.
+
+        The measure is held even though the column is wider. This project
+        already records the rule from the app side: content stops at an 880px
+        measure "so a sale row does not run 900px with a number at each end".
+        Prose here stops at 620 for the same reason, while the LAYOUT is free to
+        use the width.
+      */
+      @media (min-width: 700px) {
+        #landing .wrap { max-width: 620px; padding: 0 32px; }
+        #landing .band { padding: 88px 0; }
+        #landing .band-hero { padding-top: 32px; padding-bottom: 64px; }
+        #landing .navIn { max-width: 620px; padding: 10px 32px; }
+        #landing h1 { font-size: 40px; letter-spacing: -1.4px; }
+        #landing .sub { font-size: 17px; }
+        #landing .phone { width: 300px; }
+      }
+
+      @media (min-width: 1024px) {
+        #landing .wrap { max-width: 1040px; padding: 0 40px; }
+        #landing .band { padding: 104px 0; }
+        #landing .band-hero { padding-top: 40px; padding-bottom: 72px; }
+        #landing .navIn { max-width: 1040px; padding: 12px 40px; gap: 28px; }
+        #landing .navLinks { display: flex; gap: 28px; margin-right: 8px; }
+
+        /* The hero is two columns, which is the whole point: the screenshot is
+           the thing the research says does the conversion work, and on a wide
+           screen it can sit BESIDE the headline instead of a scroll below it. */
+        #landing .hero {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 320px;
+          gap: 48px;
+          align-items: center;
+        }
+        #landing .heroText { max-width: 592px; }
+        #landing .phone { width: 320px; margin: 0; }
+
+        /* Measured, not placed by feel: the crop is 340x243 CSS px, so 256
+           wide is 183 tall. It overhangs the phone by 60px -- enough to layer,
+           little enough that the business rows behind it are still readable --
+           and reaches 196px left into the 48px gap and the text column.
+           That column is NOT empty at this height any more -- the hero note
+           sits exactly there -- so the note is capped at 400px and the
+           measured clearance between them is 44px. A position argued from
+           "nothing is there" has to be re-measured the moment something is. */
+        #landing .frag {
+          display: block; position: absolute;
+          left: -196px; bottom: 28px; width: 256px; height: 183px;
+          border-radius: 14px;
+          background-image: url(/shot-chart.webp);
+          background-size: cover; background-position: center;
+          /* It is decorative and it OVERLAPS the phone, so without this it
+             swallows taps on the Home tab underneath it. Measured with
+             elementFromPoint rather than reasoned about: the left third of
+             that zone came back as "frag", which is a dead control on the one
+             tab a visitor presses to get back. */
+          pointer-events: none;
+          border: 1px solid rgba(250,248,244,0.12);
+          box-shadow: 0 22px 44px rgba(0,0,0,0.5);
+          transform: rotate(-3deg);
+        }
+
+        /* Display type. Weight goes DOWN as size goes up is the app's own
+           typography rule and it is why this is 700 here rather than heavier:
+           at 64px a bold DM Sans headline is already the loudest thing on any
+           screen it lands on. Tracking tightens with the size, which is the
+           other half of that rule. */
+        #landing h1 { font-size: 64px; letter-spacing: -2.6px; line-height: 1.05; }
+        #landing h2 { font-size: 40px; letter-spacing: -1.6px; margin-bottom: 14px; }
+        #landing .sub { font-size: 18px; margin-bottom: 32px; }
+
+        /* A full-width button across a 560px column is a phone habit. */
+        #landing .go, #landing .alt { width: auto; display: inline-block; padding: 0 32px; }
+        #landing .alt { padding-left: 16px; }
+
+        /* Two up. Four single-file rows down a 1040px page is the same empty
+           page the hero had. */
+        #landing ul { display: grid; grid-template-columns: 1fr 1fr; gap: 0 48px; }
+
+        /* Prose keeps its measure even where the column does not. */
+        #landing h2, #landing .lede, #landing .trust, #landing .beta, #landing .cap { max-width: 620px; }
+
+        /* The crop beside its own heading rather than under it, for the same
+           reason the hero is two columns: a 1040px page with a 620px column of
+           prose down the left is a phone page with margins.
+
+           520 rather than the 720 it used to have. The image is 716px wide, so
+           at full size the app's own type inside it came out LARGER than this
+           page's headings -- a quotation shouting over the page quoting it.
+           At 520 the crop reads at roughly the scale a phone shows it. */
+        #landing .fixSec {
+          display: grid; grid-template-columns: minmax(0, 1fr) 520px;
+          gap: 56px; align-items: center;
+        }
+        #landing .shot { max-width: 520px; }
+
+        /* Fixed left column, because the beta note is a boxed aside and the
+           trust note is prose: giving the box a share of a fraction would make
+           its width depend on how long the paragraph beside it happens to be. */
+        #landing .closeSec {
+          display: grid; grid-template-columns: 420px minmax(0, 1fr);
+          gap: 56px; align-items: start;
+        }
+        #landing .closeSec > .beta { margin-bottom: 0; max-width: none; }
+        #landing hr { margin: 56px 0; }
+        #landing .band-hero .wrap::before { top: -220px; width: 760px; height: 760px; }
+      }
+
+      /* One more step, because a 64px headline in a 1440px window is a phone
+         page again. The wrap grows with it so the measure stays proportionate
+         rather than the column simply gaining more empty page. */
+      @media (min-width: 1440px) {
+        #landing .wrap { max-width: 1160px; }
+        #landing .navIn { max-width: 1160px; }
+        #landing .hero { grid-template-columns: minmax(0, 1fr) 340px; gap: 64px; }
+        #landing .heroText { max-width: 680px; }
+        #landing .phone { width: 340px; }
+        #landing h1 { font-size: 76px; letter-spacing: -3.2px; }
+        #landing h2 { font-size: 46px; letter-spacing: -2px; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #landing button:active { transform: none; }
+        /* The bar's two anchors are the only thing that scrolls this page by
+           itself, and a smooth scroll is motion like any other. */
+        #landing { scroll-behavior: auto; }
+        /* Belt and braces: the script also refuses to add `bt-anim` at all
+           under reduced motion, so this should never be the thing doing the
+           work. It is here because a preference changed mid-session must not
+           leave content stuck at opacity 0. */
+        .bt-anim #landing [data-reveal] {
+          opacity: 1 !important; transform: none !important; transition: none !important;
+        }
+        /* The demo's crossfade is motion like any other. It is NOT covered by
+           the rule above: that one only reaches [data-reveal], and this is an
+           <img> inside one. */
+        #landing .demo img { transition: none !important; }
+      }
     </style>
 
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -90,17 +725,452 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap" rel="stylesheet">
+    <!--
+      One family, and only the weights the app actually uses.
+
+      This was DM Sans AND Playfair Display, both with their full 100-1000
+      weight range and both with italics: 12 font files, 386 KB, on the first
+      load of an app whose users pay for every megabyte and are often on a slow
+      connection. Nothing in BizTrack is ever italic, and nothing needs a
+      display serif. Trimmed to DM Sans 400-700 upright: 2 files, 92 KB.
+
+      If a second face is ever added, weigh it in kilobytes on a 3G connection
+      before weighing it in taste.
+    -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
-    
+
+    <!--
+      Copy rules for this page, because it is the first thing anyone reads.
+
+      Say what the app DOES, not what it is like. "See what you actually made"
+      is the job; "powerful analytics" is a brochure. Every claim here has to
+      stay true, which is the rule this project has broken four times in its
+      own copy and written down each time.
+
+      The beta box says only what can be backed: fifty places, closely read
+      feedback, and that the price is announced before it applies. It does NOT
+      promise a discount. That promise is the owner's to make when the cohort
+      is known, and putting it here would commit to it at signup.
+    -->
+    <!--
+      The demo's screen graph: which picture, what it says, and where its hit
+      areas are. GENERATED -- `node scratchpad/demoscreens.mjs` drives the real
+      app on the marketing seed, photographs each screen and measures each
+      control, then rewrites the block below. Do not hand-edit it: a zone typed
+      by eye is a dead control the first time the app's chrome moves.
+    -->
+    <script>
+      /* BEGIN demo map -- generated by scratchpad/demoscreens.mjs, do not edit by hand */
+      window.BT_DEMO = {"home":{"f":"shot-home.webp","a":"The BizTrack home screen: profit for September, a low-stock warning naming four products, and four businesses each in its own colour: a provisions store, an electronics counter, a phone repair shop and a kitchen.","z":[{"l":0,"t":64.88,"w":100,"h":9.38,"to":"b1-overview","n":"Open Mami Joy Provisions"},{"l":0,"t":74.26,"w":100,"h":9.25,"to":"b2-overview","n":"Open Bamenda Electronics"},{"l":0,"t":83.51,"w":100,"h":11.13,"to":"b3-overview","n":"Open QuickFix Phones"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"home-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"home-sale":{"f":"demo-home-sale.webp","a":"Recording a sale in BizTrack, opened from the home screen and shown over it: the product, how many, the price the customer paid, and the profit that leaves.","z":[{"l":6.15,"t":84.13,"w":87.69,"h":6.75,"to":"b1-sales","n":"Record the sale"},{"l":0,"t":0,"w":100,"h":10,"to":"home","n":"Close without recording"}]},"b1-sale":{"f":"demo-b1-sale.webp","a":"Recording a sale in BizTrack for Mami Joy Provisions: the product, how many, the price the customer paid, and the profit that leaves.","z":[{"l":6.15,"t":84.13,"w":87.69,"h":6.75,"to":"b1-sales","n":"Record the sale"},{"l":0,"t":0,"w":100,"h":10,"to":"b1-overview","n":"Close without recording"}]},"b1-overview":{"f":"demo-b1-overview.webp","a":"The BizTrack overview for Mami Joy Provisions: all-time profit, revenue, margin and the sales behind them.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b1-overview","n":"Overview for Mami Joy Provisions"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b1-stock","n":"Inventory for Mami Joy Provisions"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b1-sales","n":"Sales for Mami Joy Provisions"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b1-bills","n":"Invoices for Mami Joy Provisions"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b1-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b1-stock":{"f":"demo-b1-stock.webp","a":"The BizTrack stock list for Mami Joy Provisions: every product with its price, its cost, how many have sold and how many are left, and a restock button on each.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b1-overview","n":"Overview for Mami Joy Provisions"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b1-stock","n":"Inventory for Mami Joy Provisions"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b1-sales","n":"Sales for Mami Joy Provisions"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b1-bills","n":"Invoices for Mami Joy Provisions"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b1-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b1-sales":{"f":"demo-b1-sales.webp","a":"The BizTrack sales list for Mami Joy Provisions: every sale recorded, with what was sold, for how much, and when.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b1-overview","n":"Overview for Mami Joy Provisions"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b1-stock","n":"Inventory for Mami Joy Provisions"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b1-sales","n":"Sales for Mami Joy Provisions"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b1-bills","n":"Invoices for Mami Joy Provisions"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b1-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b1-bills":{"f":"demo-b1-bills.webp","a":"The BizTrack invoices for Mami Joy Provisions: what is still outstanding, and what has been settled.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b1-overview","n":"Overview for Mami Joy Provisions"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b1-stock","n":"Inventory for Mami Joy Provisions"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b1-sales","n":"Sales for Mami Joy Provisions"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b1-bills","n":"Invoices for Mami Joy Provisions"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b1-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b2-sale":{"f":"demo-b2-sale.webp","a":"Recording a sale in BizTrack for Bamenda Electronics: the product, how many, the price the customer paid, and the profit that leaves.","z":[{"l":6.15,"t":84.13,"w":87.69,"h":6.75,"to":"b2-sales","n":"Record the sale"},{"l":0,"t":0,"w":100,"h":10,"to":"b2-overview","n":"Close without recording"}]},"b2-overview":{"f":"demo-b2-overview.webp","a":"The BizTrack overview for Bamenda Electronics: all-time profit, revenue, margin and the sales behind them.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b2-overview","n":"Overview for Bamenda Electronics"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b2-stock","n":"Inventory for Bamenda Electronics"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b2-sales","n":"Sales for Bamenda Electronics"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b2-bills","n":"Invoices for Bamenda Electronics"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b2-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b2-stock":{"f":"demo-b2-stock.webp","a":"The BizTrack stock list for Bamenda Electronics: every product with its price, its cost, how many have sold and how many are left, and a restock button on each.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b2-overview","n":"Overview for Bamenda Electronics"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b2-stock","n":"Inventory for Bamenda Electronics"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b2-sales","n":"Sales for Bamenda Electronics"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b2-bills","n":"Invoices for Bamenda Electronics"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b2-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b2-sales":{"f":"demo-b2-sales.webp","a":"The BizTrack sales list for Bamenda Electronics: every sale recorded, with what was sold, for how much, and when.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b2-overview","n":"Overview for Bamenda Electronics"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b2-stock","n":"Inventory for Bamenda Electronics"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b2-sales","n":"Sales for Bamenda Electronics"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b2-bills","n":"Invoices for Bamenda Electronics"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b2-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b2-bills":{"f":"demo-b2-bills.webp","a":"The BizTrack invoices for Bamenda Electronics: what is still outstanding, and what has been settled.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b2-overview","n":"Overview for Bamenda Electronics"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b2-stock","n":"Inventory for Bamenda Electronics"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b2-sales","n":"Sales for Bamenda Electronics"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b2-bills","n":"Invoices for Bamenda Electronics"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b2-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b3-sale":{"f":"demo-b3-sale.webp","a":"Recording a sale in BizTrack for QuickFix Phones: the product, how many, the price the customer paid, and the profit that leaves.","z":[{"l":6.15,"t":84.13,"w":87.69,"h":6.75,"to":"b3-sales","n":"Record the sale"},{"l":0,"t":0,"w":100,"h":10,"to":"b3-overview","n":"Close without recording"}]},"b3-overview":{"f":"demo-b3-overview.webp","a":"The BizTrack overview for QuickFix Phones: all-time profit, revenue, margin and the sales behind them.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b3-overview","n":"Overview for QuickFix Phones"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b3-stock","n":"Inventory for QuickFix Phones"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b3-sales","n":"Sales for QuickFix Phones"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b3-bills","n":"Invoices for QuickFix Phones"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b3-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b3-stock":{"f":"demo-b3-stock.webp","a":"The BizTrack stock list for QuickFix Phones: every product with its price, its cost, how many have sold and how many are left, and a restock button on each.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b3-overview","n":"Overview for QuickFix Phones"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b3-stock","n":"Inventory for QuickFix Phones"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b3-sales","n":"Sales for QuickFix Phones"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b3-bills","n":"Invoices for QuickFix Phones"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b3-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b3-sales":{"f":"demo-b3-sales.webp","a":"The BizTrack sales list for QuickFix Phones: every sale recorded, with what was sold, for how much, and when.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b3-overview","n":"Overview for QuickFix Phones"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b3-stock","n":"Inventory for QuickFix Phones"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b3-sales","n":"Sales for QuickFix Phones"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b3-bills","n":"Invoices for QuickFix Phones"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b3-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"b3-bills":{"f":"demo-b3-bills.webp","a":"The BizTrack invoices for QuickFix Phones: what is still outstanding, and what has been settled.","z":[{"l":3.33,"t":0.94,"w":11.28,"h":5.5,"to":"home","n":"Back to the shop list"},{"l":6.15,"t":25.6,"w":20.38,"h":4.88,"to":"b3-overview","n":"Overview for QuickFix Phones"},{"l":28.59,"t":25.6,"w":20.38,"h":4.88,"to":"b3-stock","n":"Inventory for QuickFix Phones"},{"l":51.03,"t":25.6,"w":20.38,"h":4.88,"to":"b3-sales","n":"Sales for QuickFix Phones"},{"l":73.46,"t":25.6,"w":20.38,"h":4.88,"to":"b3-bills","n":"Invoices for QuickFix Phones"},{"l":71.07,"t":83,"w":22.78,"h":5.75,"to":"b3-sale","n":"Record a sale"},{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"analytics":{"f":"demo-analytics.webp","a":"The BizTrack analytics screen: profit for September, a warning that Cooking Oil shows minus 2 in stock, a bar chart of profit by week rising from early August, and profit split by shop.","z":[{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]},"settings":{"f":"demo-settings.webp","a":"The BizTrack settings screen: the owner's profile, a dark mode switch, currency and low stock alert, the about section, and a box asking how BizTrack is working for you.","z":[{"l":6.15,"t":91.59,"w":29.23,"h":8.41,"to":"home","n":"Show the home screen"},{"l":35.38,"t":91.59,"w":29.23,"h":8.41,"to":"analytics","n":"Show the analytics screen"},{"l":64.62,"t":91.59,"w":29.23,"h":8.41,"to":"settings","n":"Show the settings screen"}]}};
+      /* END demo map */
+    </script>
+
+    <div id="landing">
+      <!-- The bar is NOT revealed on scroll. Chrome that fades in is chrome
+           that was not there when the page painted. -->
+      <div class="nav">
+        <div class="navIn">
+          <div class="brand">
+            <!--
+              BizTrack's own mark, the artwork from public/favicon.svg, inlined
+              so it costs no request and stays sharp at any size.
+
+              The favicon draws the disc on a #2C1810 rounded square. That
+              square is invisible on this bar, which is the same colour, so
+              only the DISC is drawn here: the halves carry the mark and the
+              centre dot and divider are cut back to the bar, which is what
+              they already are in the icon.
+            -->
+            <svg class="mark" viewBox="0 0 32 32" width="30" height="30" role="img" aria-label="BizTrack">
+              <circle cx="16" cy="16" r="11" fill="#3D2518"/>
+              <path d="M16 5 A11 11 0 0 0 16 27 Z" fill="#C17F5A"/>
+              <path d="M16 5 A11 11 0 0 1 16 27 Z" fill="#FAF8F4" opacity="0.92"/>
+              <circle cx="16" cy="16" r="2.5" fill="#2C1810"/>
+              <line x1="16" y1="5" x2="16" y2="27" stroke="#2C1810" stroke-width="1"/>
+            </svg>
+            <b>BizTrack</b>
+          </div>
+          <nav class="navLinks">
+            <a href="#how">How it works</a>
+            <a href="#beta">Beta</a>
+          </nav>
+          <button class="navSignin" type="button" data-landing-go="signin">Sign in</button>
+          <button class="navGo" type="button" data-landing-go="signup">Get started</button>
+        </div>
+      </div>
+
+      <div class="band band-hero">
+      <div class="wrap">
+        <div class="hero">
+        <div class="heroText">
+        <h1 data-reveal style="--d:0">Know <span class="dim">what your business is</span> really making.</h1>
+        <p class="sub" data-reveal style="--d:1">
+          Your stock, your sales and your real profit in one place, on the phone
+          you already have.
+        </p>
+
+        <div data-reveal style="--d:2">
+          <button class="go" type="button" data-landing-go="signup">Get started</button>
+          <button class="alt" type="button" data-landing-go="signin">I already have an account</button>
+        </div>
+
+        <p class="heroNote" data-reveal style="--d:3">
+          Built in <b>Buea, Cameroon</b>. Records a sale with or without signal,
+          and syncs when the network comes back.
+        </p>
+
+        <!-- The hero, and the only image above the fold. Text paints before
+             images regardless, so this costs the first paint nothing. `width`
+             and `height` are set so the layout does not jump when it lands. -->
+        </div>
+
+        <div class="heroArt">
+          <!-- The phone and the fragment share a positioning context of their
+               own, so the hint below can grow without moving the fragment. -->
+          <div class="phoneWrap">
+          <div class="phone" data-reveal style="--d:3">
+            <div class="demo" data-on="home">
+              <img id="demoShot" src="/shot-home.webp" width="682" height="1400" alt="The BizTrack home screen: profit for September, a low-stock warning naming four products, and four businesses each in its own colour: a provisions store, an electronics counter, a phone repair shop and a kitchen." decoding="async" />
+              <!-- Over the app's own bottom bar in the picture. The labels are
+                   already drawn there, so these carry no text of their own and
+                   have to say what they are some other way. -->
+              <div class="demoTabs" role="group" aria-label="Move around the demo"></div>
+            </div>
+          </div>
+          <!-- Decorative: it is a crop of the screen already described above,
+               so a second description would be the same picture said twice to
+               a screen reader. -->
+          <div class="frag" data-reveal style="--d:4" aria-hidden="true"></div>
+          </div>
+          <p class="demoHint" data-reveal style="--d:5" hidden>Tap the bar, or a shop. These are real screens, not pictures of one.</p>
+        </div>
+        </div>
+
+      </div>
+      </div>
+
+      <div class="band band-paper">
+      <div class="wrap">
+        <p class="eyebrow" data-reveal>What it does</p>
+        <h2 id="how" data-reveal style="--d:1">It does the arithmetic you keep in your head.</h2>
+        <p class="lede" data-reveal style="--d:1">
+          Every sale records what the goods cost you, so the figure on your screen
+          is what you kept, not what came in.
+        </p>
+        <ul>
+          <li data-reveal style="--d:0"><i>01</i><b>Stock that counts itself down</b><span>It warns you before something runs out, and shows what is sitting unsold.</span></li>
+          <li data-reveal style="--d:1"><i>02</i><b>Works with no signal</b><span>Record a sale standing at your stall. It syncs when the network comes back.</span></li>
+          <li data-reveal style="--d:2"><i>03</i><b>Receipts and invoices</b><span>Send a customer a proper receipt on WhatsApp in two taps.</span></li>
+          <li data-reveal style="--d:3"><i>04</i><b>Several businesses, kept apart</b><span>Each shop has its own stock, its own money and its own colour.</span></li>
+        </ul>
+
+      </div>
+      </div>
+
+      <div class="band">
+      <div class="wrap">
+        <p class="eyebrow" data-reveal>The one thing worth doing</p>
+        <div class="fixSec">
+          <div>
+            <h2 data-reveal>And it tells you what needs fixing.</h2>
+            <p class="lede" data-reveal style="--d:1">
+              BizTrack reads your books and says the one thing worth acting on,
+              in plain words.
+            </p>
+          </div>
+          <div>
+            <!-- lazy: two screens down, and on a slow connection those bytes
+                 are better spent on the hero. -->
+            <div class="shot" data-reveal>
+              <img src="/shot-analytics.webp" width="716" height="248" alt="A message from BizTrack reading: Needs fixing. Cooking Oil 1L at Mami Joy Provisions shows minus 2 in stock. Recount it, or record the missing restock." loading="lazy" decoding="async" />
+            </div>
+            <p class="cap" data-reveal style="--d:1">A real screen from the app, not an illustration.</p>
+          </div>
+        </div>
+
+      </div>
+      </div>
+
+      <div class="band band-paper">
+      <div class="wrap">
+        <p class="eyebrow" data-reveal>Where it stands</p>
+        <!-- The beta note and the trust note are one closing block. Apart,
+             each left a 500px column of empty page beside it on a desktop,
+             which is the phone layout again wearing a wider window. -->
+        <div class="closeSec">
+          <div class="beta" id="beta" data-reveal>
+            <b>Beta</b>
+            <p>
+              BizTrack is in beta and we are taking 50 people in. It is free while the
+              beta runs, we read every message sent from inside the app, and we will
+              tell you the price before it ever applies to you.
+            </p>
+          </div>
+
+          <div>
+        <h2 data-reveal>Your books stay yours.</h2>
+        <p class="trust" data-reveal style="--d:1">
+          They are backed up to your account, so a lost phone does not lose your
+          records, and you can export everything at any time. We will never lock
+          you out of your own books, whatever happens with payment.
+          <br /><br />
+          Built in Buea, Cameroon. Questions go to a person:
+          <a href="https://wa.me/237677716908">WhatsApp</a> or
+          <a href="mailto:hello@biztrack.store">hello@biztrack.store</a>.
+        </p>
+          </div>
+        </div>
+
+        <button class="go" type="button" data-landing-go="signup" style="margin-top: 28px">Get started</button>
+
+        <p class="foot">Free while the beta runs. No card, no payment details.</p>
+
+        <!-- The sign-off, and last on the page on purpose: between the beta
+             note and the button it read as a label FOR the button. -->
+        <img class="signoff" src="/wordmark-light.png" width="640" height="160"
+             alt="BizTrack" loading="lazy" decoding="async" data-reveal />
+      </div>
+      </div>
+
+      <div class="band footer">
+      <div class="wrap">
+        <div class="footerIn" data-reveal>
+          <span>Built by <b>Apex Tech</b>, Buea, Cameroon.</span>
+          <span>&copy; 2026 BizTrack</span>
+        </div>
+      </div>
+      </div>
+    </div>
+
+
     <div id="splash-screen">
       <div class="logo-box">
         <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
       </div>
       <div class="loading-bar"><div class="loading-fill"></div></div>
     </div>
+
+    <script>
+      // Both buttons do the same thing: get out of the way. The app has been
+      // loading underneath this the whole time, so what is behind is the
+      // sign-in screen, already mounted.
+      //
+      // It sets the same class the pre-paint check sets, so there is one rule
+      // hiding this element rather than two ways of hiding it.
+      (function () {
+        var el = document.getElementById("landing");
+        if (!el) return;
+
+        // ── motion ────────────────────────────────────────────────────────
+        //
+        // `bt-anim` is added HERE rather than in the head, so the hide rules
+        // only ever exist in a document where this script is running and has
+        // reached the observer below. The safety timeout is the second half of
+        // that: if IntersectionObserver never fires for any reason, everything
+        // is revealed anyway after 1.5s. A page whose content depends on an
+        // observer is a page that can stay blank.
+        var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var reveals = [].slice.call(el.querySelectorAll("[data-reveal]"));
+        var showAll = function () {
+          reveals.forEach(function (n) { n.classList.add("in"); });
+        };
+
+        if (reduce || !("IntersectionObserver" in window)) {
+          document.documentElement.className += " bt-anim";
+          showAll();
+        } else {
+          document.documentElement.className += " bt-anim";
+
+          // A SWEEP, not a per-entry reveal, and the difference is a real bug.
+          //
+          // Revealing only the element an entry fired for leaves anything that
+          // scrolled past WITHOUT firing hidden forever. Measured: jumping to
+          // the bottom of this page left SIX blocks in the middle permanently
+          // invisible, because they were never in view on a frame the observer
+          // sampled. A fast flick on a cheap phone is the same thing.
+          //
+          // So the observer is only a cheap trigger, and correctness comes from
+          // the sweep: whenever it fires, reveal everything now at or above the
+          // fold, whether it was the entry or not. Nothing can be skipped,
+          // because "already passed" and "in view" are treated the same.
+          var pending = reveals.slice();
+          var io = null;
+          // THE 8% GATE ASSUMES THERE IS ALWAYS MORE PAGE TO SCROLL, and at
+          // the bottom there is not. The last element on the page can come to
+          // rest INSIDE that bottom strip -- the observer's shrunken root
+          // never contains it and the gate never passes it -- so it stays at
+          // opacity 0 for ever. Measured: the sign-off sat hidden five
+          // seconds after the scroll had arrived at 390x820, while at
+          // 1280x900 it cleared 92% and revealed normally.
+          // At the end of the scroller nothing may stay pending.
+          var sweep = function () {
+            var h = window.innerHeight;
+            var atEnd = el.scrollTop >= el.scrollHeight - el.clientHeight - 2;
+            pending = pending.filter(function (n) {
+              if (!atEnd && n.getBoundingClientRect().top > h * 0.92) return true;
+              n.classList.add("in");
+              if (io) io.unobserve(n);
+              return false;
+            });
+          };
+
+          // The observer alone cannot see that last strip, so the scroll
+          // itself is the other trigger. It detaches once nothing is left,
+          // and the sweep is a filter over a shrinking array either way.
+          var onScroll = function () {
+            sweep();
+            if (!pending.length) el.removeEventListener("scroll", onScroll);
+          };
+          el.addEventListener("scroll", onScroll, { passive: true });
+          //
+          // THE OBSERVER'S BOUNDARY AND THE SWEEP'S GATE MUST BE THE SAME
+          // BOUNDARY. They were not: the observer fired the moment a node was
+          // one pixel inside the viewport, and the sweep then refused to
+          // reveal anything whose top was still below 92% of it. A node that
+          // entered by a sliver and stopped there -- which is what the last
+          // block on the page does when a scroll ENDS at the bottom -- fired
+          // once, was rejected, and never fired again, because nothing
+          // crosses a threshold after the scrolling stops.
+          //
+          // Measured after the bar was added: "Your books stay yours." and the
+          // paragraph under it sat at opacity 0 FOREVER, 514px down an 820px
+          // window. The sweep was written to make this impossible and the
+          // mismatched number put it back.
+          //
+          // `rootMargin` shrinks the root by the same 8%, so the callback now
+          // fires exactly when the gate would pass. One boundary, written once.
+          io = new IntersectionObserver(sweep, { threshold: 0, rootMargin: "0px 0px -8% 0px" });
+          reveals.forEach(function (n) { io.observe(n); });
+
+          // Two frames before the first sweep, so the opacity-0 state actually
+          // paints and the hero TRANSITIONS in rather than simply being there.
+          requestAnimationFrame(function () { requestAnimationFrame(sweep); });
+
+          // The safety net CHECKS rather than waits. A blanket `setTimeout`
+          // revealing everything after a second and a half was the first
+          // version, and it fired before anyone had scrolled: the observer was
+          // doing nothing and the page looked correct anyway, which is the kind
+          // of pass that hides its own failure.
+          setTimeout(function () {
+            if (!el.querySelector("[data-reveal].in")) showAll();
+          }, 800);
+        }
+
+        // ── the phone is a demo ───────────────────────────────────────────
+        //
+        // Real screenshots with real hit areas over the app's own controls:
+        // tap the bar and the picture becomes that screen, tap a shop and it
+        // becomes that shop. Nothing here touches localStorage, runs the app
+        // or forges a session, which is the only version of this that is safe
+        // to put in front of a stranger at the origin their books will later
+        // live at. See the note above window.BT_DEMO.
+        //
+        // The whole graph is DATA, generated beside the screenshots, so the
+        // pictures and the zones cannot drift apart.
+        (function () {
+          var demo = el.querySelector(".demo");
+          var map = window.BT_DEMO;
+          if (!demo || !map || !map.home) return;
+          var shot = demo.querySelector("img");
+          var host = demo.querySelector(".demoTabs");
+          var hint = el.querySelector(".demoHint");
+          if (!shot || !host) return;
+
+          // The hero is already on screen, so it is already paid for.
+          var have = {}; have[map.home.f] = true;
+          var at = "home";
+
+          var zones = function (id) {
+            host.innerHTML = "";
+            (map[id].z || []).forEach(function (z) {
+              if (!map[z.to]) return;            // never draw a zone to nowhere
+              var b = document.createElement("button");
+              b.type = "button";
+              b.className = "demoTab";
+              b.setAttribute("aria-controls", "demoShot");
+              b.setAttribute("aria-label", z.n || ("Show " + z.to));
+              // Where it leads, readable from outside. Without this a probe
+              // can only guess a zone by position, and a selector that matches
+              // nothing reports exactly what a working page reports.
+              b.setAttribute("data-to", z.to);
+              if (z.to === id) b.setAttribute("aria-current", "true");
+              b.style.left = z.l + "%";
+              b.style.top = z.t + "%";
+              b.style.width = z.w + "%";
+              b.style.height = z.h + "%";
+              b.addEventListener("click", function () { go(z.to); });
+              host.appendChild(b);
+            });
+          };
+
+          var go = function (id) {
+            var s = map[id];
+            if (!s || id === at) return;
+            at = id;
+            // The attribute is the state anyone outside this closure can read,
+            // including a test. Leaving it stale made a 108-zone walk report
+            // every screen unreachable when only this line was missing.
+            demo.setAttribute("data-on", id);
+            zones(id);
+            if (have[s.f]) { shot.src = "/" + s.f; shot.alt = s.a; return; }
+
+            // Swapping `src` straight away would blank the frame for as long
+            // as the fetch takes, which on this audience's connections is the
+            // whole point. Load first, then swap, and dim meanwhile so the tap
+            // is acknowledged.
+            demo.className = "demo loading";
+            var pre = new Image();
+            pre.onload = function () {
+              have[s.f] = true;
+              demo.className = "demo";
+              // They may have tapped something else while this was in flight.
+              if (at === id) { shot.src = "/" + s.f; shot.alt = s.a; }
+            };
+            // A failed fetch leaves the screen that is already there. A broken
+            // image icon in the hero would be worse than not moving at all.
+            pre.onerror = function () { demo.className = "demo"; };
+            pre.src = "/" + s.f;
+          };
+
+          zones("home");
+          // Only now is the invitation true. Without the script there are no
+          // hit areas, and a line telling people to tap a picture that cannot
+          // answer is the dead control this whole design exists to avoid.
+          if (hint) hint.hidden = false;
+
+          // On a wide screen with a real pointer, fetch the screens one tap
+          // away as soon as the cursor arrives. Deliberately NOT on a phone:
+          // that is a pile of kilobytes nobody asked for.
+          if (window.matchMedia &&
+              window.matchMedia("(hover: hover) and (min-width: 1024px)").matches) {
+            demo.addEventListener("pointerenter", function () {
+              (map[at].z || []).forEach(function (z) {
+                var s = map[z.to];
+                if (!s || have[s.f]) return;
+                var pre = new Image();
+                pre.onload = function () { have[s.f] = true; };
+                pre.src = "/" + s.f;
+              });
+            }, { once: true });
+          }
+        })();
+
+        // ── the two buttons ───────────────────────────────────────────────
+        el.addEventListener("click", function (e) {
+          var btn = e.target.closest("[data-landing-go]");
+          if (!btn) return;
+          document.documentElement.className += " bt-returning";
+          // The sign-in screen mounted underneath this a while ago, so its
+          // starting mode cannot come from a prop. "I already have an account"
+          // used to land people on "Create your account", which is a control
+          // that says one thing and does another.
+          window.dispatchEvent(new CustomEvent("bt-auth-mode", { detail: btn.getAttribute("data-landing-go") }));
+        });
+      })();
+    </script>
 
     <script type="module" src="/src/main.jsx"></script>
   </body>

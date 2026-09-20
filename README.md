@@ -1,8 +1,8 @@
 # BizTrack
 
 An offline-first PWA for tracking inventory, sales and profit across several
-small businesses. Built for independent sellers and makers — crochet, thrift,
-food, beauty — with XAF and other West/Central and East African currencies
+small businesses. Built for independent sellers and makers (crochet, thrift,
+food, beauty) with XAF and other West/Central and East African currencies
 first-class.
 
 Offline-first is a product decision, not a leftover. Mobile data is expensive
@@ -22,7 +22,7 @@ npm run lint
 
 The app runs **fully local with no backend configured**, which is how it ships
 to beta testers. To connect Supabase, copy `.env.example` to `.env.local` and
-fill it in — see [`supabase/README.md`](supabase/README.md).
+fill it in, see [`supabase/README.md`](supabase/README.md).
 
 Database and row-level-security tests need a local Postgres:
 
@@ -60,7 +60,7 @@ answerable question.
 
 **Records are built to sync before there is a server.** Client-generated UUIDs,
 `updatedAt` on every mutation, and soft deletes with `deletedAt`. A hard delete
-cannot propagate — the other device has no way to tell "deleted" from "not seen
+cannot propagate: the other device has no way to tell "deleted" from "not seen
 yet".
 
 ## Data safety

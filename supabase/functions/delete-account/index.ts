@@ -1,7 +1,7 @@
 /**
  * Account deletion.
  *
- * A client cannot delete its own auth user — that needs the service role — so
+ * A client cannot delete its own auth user, which needs the service role, so
  * this exists to give people a right-to-erasure path that does not depend on
  * emailing us and waiting.
  *
@@ -60,6 +60,49 @@ Deno.serve(async (req) => {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  // ── product photos, BEFORE the user row ────────────────────────────────────
+  //
+  // Deleting the auth user cascades DATABASE rows. It does not empty Storage,
+  // so without this every photograph the owner ever took of their stock stays
+  // in the bucket after they have exercised a legal right to be deleted, with
+  // no account left that could ever reach or remove it.
+  //
+  // Before, not after: once `deleteUser` returns there is no `auth.uid()` to
+  // scope a cleanup to, and a failure here should abort the whole thing rather
+  // than leave files behind that nothing can name.
+  //
+  // Objects live at `{userId}/{photoId}.jpg`, which is also what the storage
+  // policies authorise against, so listing that one folder is the complete set.
+  // Paged, because `list` caps at a page and a shop that has traded for years
+  // can hold more photos than one page holds. Leaving the tail behind would
+  // make "your data was deleted" false, on the one path where that sentence is
+  // a legal claim rather than a convenience.
+  //
+  // It always re-reads the FIRST page rather than walking an offset forward:
+  // each pass deletes what it read, so the next page slides down into the space
+  // just cleared and advancing an offset would step straight over it.
+  //
+  // `rounds` is a stop, not an expectation. Without it, a remove that reports
+  // success while deleting nothing turns a cleanup into an endless loop inside
+  // a function the user is waiting on.
+  try {
+    const PAGE = 100;
+    for (let rounds = 0; rounds < 200; rounds += 1) {
+      const { data: files, error: listErr } = await admin.storage
+        .from("product-photos")
+        .list(user.id, { limit: PAGE });
+      if (listErr) throw listErr;
+      if (!files?.length) break;
+
+      const paths = files.map((f) => `${user.id}/${f.name}`);
+      const { error: rmErr } = await admin.storage.from("product-photos").remove(paths);
+      if (rmErr) throw rmErr;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return json({ error: `could not delete your photos, so nothing was deleted: ${message}` }, 500);
+  }
 
   const { error: delErr } = await admin.auth.admin.deleteUser(user.id);
   if (delErr) {

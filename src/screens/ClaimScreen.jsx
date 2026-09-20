@@ -33,19 +33,19 @@ export default function ClaimScreen({ styles: S, local, remote, businesses, onRe
 
   return (
     <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
-      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32, overflowY: "auto" }}>
-        <div style={{ background: "rgba(255,255,255,0.08)", width: 62, height: 62, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }  /* the scroll model is .bt-focus's job now, for all nine */} className="bt-focus">
+        <div style={{ background: "rgba(255,255,255,0.08)", width: 62, height: 62, borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
           <Cloud size={30} color="#FAF8F4" />
         </div>
 
-        <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 24, marginBottom: 10 }}>
+        <h1 style={{ ...S.userName, color: "#FAF8F4", marginBottom: 10 }}>
           {accountHasBooks ? "Two sets of books" : "Back up your books"}
         </h1>
 
         {/* The numbers, stated plainly. "Your data" is what people do not trust. */}
         <div style={{
           background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.14)",
-          borderRadius: 14, padding: "14px 16px", marginBottom: 16,
+          borderRadius: 16, padding: "14px 16px", marginBottom: 16,
         }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", margin: "0 0 6px", letterSpacing: 0.4 }}>
             ON THIS PHONE
@@ -72,12 +72,12 @@ export default function ClaimScreen({ styles: S, local, remote, businesses, onRe
 
         <p style={{ fontSize: 14, lineHeight: 1.65, color: "rgba(255,255,255,0.78)", margin: "0 0 18px" }}>
           {accountHasBooks
-            ? "This account already has records, and so does this phone. Choose what happens — nothing is deleted either way, and a copy of what is on this phone is saved before anything changes."
+            ? "This account already has records, and so does this phone. Choose what happens. Nothing is deleted either way, and a copy of what is on this phone is saved before anything changes."
             : "Your records will be copied to your account, so they survive a lost or replaced phone and follow you to another device. Nothing on this phone is removed."}
         </p>
 
         {error && (
-          <p style={{ fontSize: 12, color: "#FF9B8A", fontWeight: 600, margin: "0 0 12px", lineHeight: 1.5 }}>{error}</p>
+          <p style={S.formErrorDark}>{error}</p>
         )}
 
         {/* Offered before the decision, not after it. */}
@@ -91,7 +91,7 @@ export default function ClaimScreen({ styles: S, local, remote, businesses, onRe
           }}
         >
           <Download size={16} />
-          {saved ? "Copy saved — save again" : "Save a copy to this phone first"}
+          {saved ? "Copy saved. Save again" : "Save a copy to this phone first"}
         </button>
 
         <button
@@ -103,7 +103,7 @@ export default function ClaimScreen({ styles: S, local, remote, businesses, onRe
           }}
         >
           {busy && <Loader size={16} className="spin" />}
-          {accountHasBooks ? "Keep both — put them together" : "Back up my books"}
+          {accountHasBooks ? "Keep both: put them together" : "Back up my books"}
         </button>
 
         {accountHasBooks && (
@@ -118,8 +118,8 @@ export default function ClaimScreen({ styles: S, local, remote, businesses, onRe
             >
               Use the account's books on this phone
             </button>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", lineHeight: 1.5, margin: "10px 2px 0" }}>
-              Putting them together is the safe choice — nothing is lost, and duplicates can be
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.62)", lineHeight: 1.5, margin: "10px 2px 0" }}>
+              Putting them together is the safe choice. Nothing is lost, and duplicates can be
               deleted afterwards. The second option sets this phone's records aside; they stay in
               the saved copy above and in the account they were never added to.
             </p>

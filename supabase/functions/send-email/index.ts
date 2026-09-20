@@ -22,6 +22,7 @@
 
 import { Brevo } from "../_shared/brevo.ts";
 import { type EmailData, render } from "./templates.ts";
+import { safeEqual } from "../_shared/secret.ts";
 
 const env = (k: string, d = "") => Deno.env.get(k) ?? d;
 
@@ -32,13 +33,6 @@ const SENDER_NAME = env("BREVO_SENDER_NAME", "BizTrack");
 const SUPABASE_URL = env("SUPABASE_URL");
 const REPLY_TO = env("REPLY_TO_EMAIL");
 
-/** Constant-time compare, so a wrong signature leaks nothing through timing. */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
 
 /**
  * standard-webhooks verification.

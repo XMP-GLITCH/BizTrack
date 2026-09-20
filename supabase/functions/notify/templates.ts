@@ -42,12 +42,12 @@ function trialEnding(payload: Payload, ctx: Ctx): Rendered {
       ? "Your BizTrack trial ends tomorrow"
       : `Your BizTrack trial ends in ${days} days`,
     html: shell({
-      preheader: `Keep writing to your books — your trial ends ${when}.`,
+      preheader: `Keep writing to your books. Your trial ends ${when}.`,
       heading: days <= 1 ? "Your trial ends tomorrow" : `Your trial ends ${when}`,
       body:
         p(`Your free month of BizTrack ends ${when}.`) +
         p(
-          `After that the app becomes <strong>read-only</strong>. Every sale, item and figure stays exactly where it is — you can still open your books, search them and export them. Only recording <em>new</em> sales and stock stops until you subscribe.`,
+          `After that the app becomes <strong>read-only</strong>. Every sale, item and figure stays exactly where it is. You can still open your books, search them and export them. Only recording <em>new</em> sales and stock stops until you subscribe.`,
         ) +
         p(`<strong style="color:${COLORS.BROWN};">${ANNUAL}</strong>, or ${MONTHLY}. The yearly price works out cheaper and saves renewing every month.`),
       ctaLabel: "Keep my books open",
@@ -62,12 +62,12 @@ function trialEnded(_payload: Payload, ctx: Ctx): Rendered {
   return {
     subject: "Your BizTrack trial has ended",
     html: shell({
-      preheader: "Your books are safe and still yours — recording new sales is paused.",
+      preheader: "Your books are safe and still yours. Recording new sales is paused.",
       heading: "Your trial has ended",
       body:
         p("Your free month is over, so BizTrack is now read-only.") +
         p(
-          `<strong>Nothing has been deleted.</strong> Open the app and everything is still there — every sale, every item, every figure — and you can export all of it whenever you want. What is paused is recording new sales and stock.`,
+          `<strong>Nothing has been deleted.</strong> Open the app and everything is still there, every sale, every item, every figure, and you can export all of it whenever you want. What is paused is recording new sales and stock.`,
         ) +
         p(`Subscribing turns writing back on immediately: <strong style="color:${COLORS.BROWN};">${ANNUAL}</strong>, or ${MONTHLY}.`),
       ctaLabel: "Start recording again",
@@ -88,7 +88,7 @@ function lowStock(payload: Payload, ctx: Ctx): Rendered {
       const n = Number(it.on_hand ?? 0);
       // Negative on-hand is legal here: overselling is allowed on purpose, and
       // this list is exactly where a reconciliation gets noticed.
-      const label = n < 0 ? `${n} — check this` : String(n);
+      const label = n < 0 ? `${n} (check this)` : String(n);
       return statRow(String(it.name ?? "Item"), label, n <= 0 ? COLORS.RED : COLORS.BROWN);
     })
     .join("");
@@ -108,7 +108,7 @@ function lowStock(payload: Payload, ctx: Ctx): Rendered {
         more,
       ctaLabel: "Restock now",
       ctaUrl: `${ctx.appUrl}/#inventory`,
-      footerNote: "A negative number means more was sold than the books show in stock — worth reconciling when you have a moment.",
+      footerNote: "A negative number means more was sold than the books show in stock. Worth reconciling when you have a moment.",
       unsubscribeUrl: ctx.unsubscribeUrl("alerts"),
     }),
   };
@@ -137,7 +137,7 @@ function weeklySummary(payload: Payload, ctx: Ctx): Rendered {
          </table>`,
       ctaLabel: "Open my books",
       ctaUrl: `${ctx.appUrl}/#stats`,
-      footerNote: "Profit is what you sold minus what those goods cost you — not revenue.",
+      footerNote: "Profit is what you sold minus what those goods cost you, not revenue.",
       unsubscribeUrl: ctx.unsubscribeUrl("alerts"),
     }),
   };
@@ -154,7 +154,7 @@ function newSignin(payload: Payload, ctx: Ctx): Rendered {
       heading: "New sign-in",
       body:
         p(`Someone signed into your BizTrack account on <strong>${escapeHtml(when)}</strong>.`) +
-        p("If that was you, there is nothing to do — this is just so you know.") +
+        p("If that was you, there is nothing to do. This is just so you know.") +
         p(
           `If it was <strong style="color:${COLORS.RED};">not</strong> you, change your password now. Your records cannot be deleted from another device, but someone signed in could read them.`,
         ),
@@ -162,7 +162,7 @@ function newSignin(payload: Payload, ctx: Ctx): Rendered {
       ctaUrl: `${ctx.appUrl}/#account`,
       // No unsubscribe link: this is the message a compromised account most
       // needs to reach its owner.
-      footerNote: "Security emails cannot be turned off from here — this is the one message you would most want to receive.",
+      footerNote: "Security emails cannot be turned off from here. This is the one message you would most want to receive.",
     }),
   };
 }

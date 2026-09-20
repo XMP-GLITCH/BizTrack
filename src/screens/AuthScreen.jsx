@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+import { fetchBetaStatus, joinWaitlist } from "../backend/beta.js";
 import { Store, Loader, Check } from "lucide-react";
 
 import {
@@ -36,7 +38,7 @@ const RESEND_COOLDOWN_MS = 60_000;
  *
  * The same reasoning is why `verify` exists. Every email we send carries a
  * numeric code next to its button, and this screen is where that code is
- * spent — so confirming an address or resetting a password can be finished
+ * spent, so confirming an address or resetting a password can be finished
  * inside the app the user already has open, without depending on a link
  * landing in the right browser.
  *
@@ -44,7 +46,7 @@ const RESEND_COOLDOWN_MS = 60_000;
  * normal condition rather than a failure, because for these users intermittent
  * data is the default.
  */
-export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
+export default function AuthScreen({ styles: S }) {
   // signin | signup | reset | verify | newpassword
   //
   // A device that has never had a session almost certainly belongs to someone
@@ -53,6 +55,39 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
   // Google from the sign-in tab -- the one path that made an account without
   // showing them the terms.
   const [mode, setMode] = useState(() => (hasSignedInBefore() ? "signin" : "signup"));
+
+  // Places left in the beta. Null while unknown, which is a THIRD state and
+  // not a synonym for full: the form renders normally until the server has
+  // actually said otherwise, because turning someone away on a slow connection
+  // is the one failure here that costs a real person.
+  const [beta, setBeta] = useState(null);
+  const [wlEmail, setWlEmail] = useState("");
+  const [wlBusy, setWlBusy] = useState(false);
+  const [wlDone, setWlDone] = useState(false);
+  const [wlError, setWlError] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchBetaStatus().then((b) => { if (alive) setBeta(b); });
+    return () => { alive = false; };
+  }, []);
+
+  // The landing page in `index.html` is plain markup outside React, and it is
+  // dismissed AFTER this component has already mounted underneath it. So its
+  // "I already have an account" button cannot be a prop and cannot be read in
+  // the initialiser above: by the time it is tapped, that has long run.
+  //
+  // It said one thing and did another until this existed -- both landing
+  // buttons dropped you on "Create your account" -- which is the plainest kind
+  // of broken control.
+  useEffect(() => {
+    const onMode = (e) => {
+      const next = e.detail;
+      if (next === "signin" || next === "signup") setMode(next);
+    };
+    window.addEventListener("bt-auth-mode", onMode);
+    return () => window.removeEventListener("bt-auth-mode", onMode);
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -147,7 +182,7 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
         if (alreadyRegistered) {
           setPassword("");
           go("signin");
-          setNotice("You already have an account with this email. Sign in instead — if you used Google before, tap Continue with Google.");
+          setNotice("You already have an account with this email. Sign in instead. If you used Google before, tap Continue with Google.");
         } else if (err) setError(describeAuthError(err));
         else if (!data?.session) {
           // Confirmation is on. Go straight to the code rather than telling
@@ -180,7 +215,7 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
               setError(describeAuthError(resendErr));
             } else {
               setLastSentAt(Date.now());
-              setNotice("Your email isn't confirmed yet — we've just sent you a new code.");
+              setNotice("Your email isn't confirmed yet. We've just sent you a new code.");
             }
           } else {
             setError(describeAuthError(err));
@@ -199,7 +234,7 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
     const waited = Date.now() - lastSentAt;
     if (waited < RESEND_COOLDOWN_MS) {
       const secs = Math.ceil((RESEND_COOLDOWN_MS - waited) / 1000);
-      return setNotice(`Hang on — you can ask for another code in ${secs}s.`);
+      return setNotice(`Hang on, you can ask for another code in ${secs}s.`);
     }
 
     setBusy(true);
@@ -254,7 +289,7 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
     padding: "3px 1px",
     margin: 0,
     display: "inline-block",
-    color: "#FAF8F4",
+    color: "rgba(255,255,255,0.75)",
     textDecoration: "underline",
     cursor: "pointer",
     font: "inherit",
@@ -271,11 +306,22 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
   // In signup mode the provider buttons are gated on consent. That gate has to
   // be visible before the tap: a big button that silently refuses, with the
   // reason in small red text above the fold, reads as a broken button.
+  // Still used to dim the Google button, which is honest: it says the control
+  // is not ready without explaining a rule nobody has broken yet.
   const oauthGated = mode === "signup" && !accepted;
 
+  // Deliberately one tier below the form's own button, and it took measuring to
+  // see why it had not been. The translucent fill made it look secondary, but it
+  // spread `primaryBtn`, so it was the same full width at the same 16/600 in a
+  // box within two pixels of the same height. Two controls of identical
+  // footprint read as peers whatever colour they are, which left the screen
+  // with two primaries and no single way forward. It steps down to the 14px
+  // body size and a shorter box, still 46px and well over the 44px target.
   const oauthBtn = {
     ...S.primaryBtn,
     marginTop: 0,
+    padding: "14px",
+    fontSize: 14,
     background: "rgba(255,255,255,0.08)",
     border: "1px solid rgba(255,255,255,0.18)",
     color: "#FAF8F4",
@@ -320,11 +366,97 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
     );
   }
 
+  /**
+   * The beta is full, and someone is trying to CREATE an account.
+   *
+   * Only that combination. Signing in still works, and has to: turning away an
+   * existing user because a cohort they are already in is full would be the
+   * worst thing this screen could do.
+   *
+   * The cap lives here rather than in the database because the database cannot
+   * enforce it. `handle_new_user` runs AFTER insert on auth.users, so by then
+   * the account exists; with Google it exists before any of our code runs.
+   * A screen that never offers the form is the only refusal available.
+   *
+   * ONE HOLE, KNOWN AND ACCEPTED: "Continue with Google" from the SIGN IN tab
+   * cannot tell a returning user from a new one, so a determined new person can
+   * still get an account that way. They get a normal trialing profile rather
+   * than a beta one. Closing it would mean removing Google sign-in from
+   * everybody who already uses it, to stop a leak of a few against fifty.
+   */
+  if (beta && (beta.full || !beta.open) && mode === "signup") {
+    const joinList = async (e) => {
+      e.preventDefault();
+      setWlError(null);
+      setWlBusy(true);
+      const res = await joinWaitlist(wlEmail, "wall");
+      setWlBusy(false);
+      if (res.ok) return setWlDone(true);
+      setWlError(
+        res.reason === "invalid" ? "That does not look like an email address."
+          : res.reason === "offline" ? "No connection. Try again when you have signal."
+          : "That could not be saved. Try again in a moment."
+      );
+    };
+
+    return (
+      <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
+        <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }} className="bt-focus">
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <div style={{ background: "rgba(255,255,255,0.08)", width: 68, height: 68, borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
+              <Store size={34} color="#FAF8F4" />
+            </div>
+            <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 26, marginBottom: 6 }}>
+              {wlDone ? "You are on the list" : "The beta is full"}
+            </h1>
+            <p style={{ ...S.greeting, color: "rgba(255,255,255,0.65)" }}>
+              {wlDone
+                ? "We will write to you the moment BizTrack opens properly."
+                : "We are taking 50 people in and those places are taken. Leave your email and we will tell you when BizTrack opens properly."}
+            </p>
+          </div>
+
+          {!wlDone && (
+            <form onSubmit={joinList} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <input
+                style={field}
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={wlEmail}
+                onChange={(e) => setWlEmail(e.target.value)}
+                placeholder="you@example.com"
+                aria-label="Your email"
+              />
+              {wlError && <p style={S.formErrorDark}>{wlError}</p>}
+              <button type="submit" style={S.primaryBtn} disabled={wlBusy}>
+                {wlBusy ? "Saving..." : "Tell me when it opens"}
+              </button>
+            </form>
+          )}
+
+          <div style={{ marginTop: 32, textAlign: "center" }}>
+            {/* Always. Someone already in the beta must be able to reach their
+                own books from a screen that has just said it is full. */}
+            <button type="button" style={{ ...S.textBtn, color: "rgba(255,255,255,0.85)" }} onClick={() => go("signin")}>
+              Already have an account? Sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ ...S.shell, background: "#2C1810", color: "#FAF8F4" }}>
-      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ background: "rgba(255,255,255,0.08)", width: 68, height: 68, borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
+      <div style={{ ...S.phone, background: "#2C1810", justifyContent: "center", padding: 32 }} className="bt-focus">
+        {/* 16, not 28. The heading and the form are one idea, "here is what you
+            are doing, now do it", and this gap was measured at 28 against the
+            32 below the form: two breaks four pixels apart, which reads as a
+            mistake rather than as two tiers. Tight here, 32 below, so the one
+            real break on the screen falls where the meaning changes. */}
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ background: "rgba(255,255,255,0.08)", width: 68, height: 68, borderRadius: 22, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
             <Store size={34} color="#FAF8F4" />
           </div>
           <h1 style={{ ...S.userName, color: "#FAF8F4", fontSize: 26, marginBottom: 6 }}>{title}</h1>
@@ -369,10 +501,10 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
           )}
 
           {error && (
-            <p style={{ fontSize: 12, color: "#FF9B8A", margin: 0, fontWeight: 600, lineHeight: 1.4 }}>{error}</p>
+            <p style={{ ...S.formErrorDark, margin: 0 }}>{error}</p>
           )}
           {notice && (
-            <p style={{ fontSize: 12, color: "#9BD4A0", margin: 0, fontWeight: 600, lineHeight: 1.4 }}>{notice}</p>
+            <p style={{ ...S.formNoticeDark, margin: 0 }}>{notice}</p>
           )}
 
           {/*
@@ -434,17 +566,11 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
 
         {showOAuth && (
           <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "32px 0 14px" }}>
               <span style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.14)" }} />
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>or</span>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.62)", fontWeight: 600 }}>or</span>
               <span style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.14)" }} />
             </div>
-
-            {oauthGated && (
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", margin: "0 0 10px", lineHeight: 1.5, textAlign: "center" }}>
-                Tick the box above to continue with Google.
-              </p>
-            )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
@@ -460,7 +586,7 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
         )}
 
         {mode === "signin" && (
-          <p style={{ fontSize: 11, lineHeight: 1.5, color: "rgba(255,255,255,0.4)", textAlign: "center", margin: "14px 0 0" }}>
+          <p style={{ fontSize: 11, lineHeight: 1.5, color: "rgba(255,255,255,0.62)", textAlign: "center", margin: "14px 0 0" }}>
             By continuing you agree to the{" "}
             <button type="button" style={{ background: "none", border: "none", padding: 0, color: "#FAF8F4", textDecoration: "underline", cursor: "pointer", font: "inherit" }} onClick={() => setLegalDoc("terms")}>Terms</button>
             {" "}and{" "}
@@ -468,13 +594,13 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
           </p>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center", marginTop: 22 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center", marginTop: 14 }}>
           {mode === "verify" && (
             <>
               <button type="button" style={{ ...S.textBtn, color: "rgba(255,255,255,0.85)" }} onClick={resend} disabled={busy}>
                 Send me another code
               </button>
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", margin: 0, textAlign: "center", lineHeight: 1.5 }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.62)", margin: 0, textAlign: "center", lineHeight: 1.5 }}>
                 No email? Check spam. The link in it works too.
               </p>
             </>
@@ -491,24 +617,39 @@ export default function AuthScreen({ styles: S, onSkip, hasLocalData }) {
             </button>
           )}
           {mode === "signin" && (
-            <button type="button" style={{ ...S.textBtn, color: "rgba(255,255,255,0.45)", fontSize: 12 }} onClick={() => go("reset")}>
+            <button type="button" style={{ ...S.textBtn, color: "rgba(255,255,255,0.62)", fontSize: 12 }} onClick={() => go("reset")}>
               Forgot your password?
             </button>
           )}
         </div>
 
-        {onSkip && mode !== "verify" && mode !== "newpassword" && (
-          <div style={{ marginTop: 28, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 18, textAlign: "center" }}>
-            <button style={{ ...S.textBtn, color: "rgba(255,255,255,0.5)", fontSize: 12 }} onClick={onSkip}>
-              Continue without an account
-            </button>
-            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", margin: "6px 0 0", lineHeight: 1.4 }}>
-              {hasLocalData
-                ? "Your existing records stay on this device. Sign in later to back them up."
-                : "Records stay on this device only, and are lost if you clear the app."}
-            </p>
-          </div>
-        )}
+        {/* "Use BizTrack without an account" WAS HERE, and it is gone.
+            Two reasons, and the second is the one that made it urgent.
+
+            An account is the backup. This app's entire v1.5.3 to v1.5.7
+            emergency-rescue history came from books living on one phone and
+            nowhere else, and the local-only route reproduced that by design.
+
+            And `evaluatePlan(null)` returns `canWrite: true` with no expiry, so
+            a signed-out user was an UNLIMITED FREE TIER. That contradicts the
+            commercial model outright -- thirty days then read-only, not a free
+            tier -- and it meant read-only enforcement could be bypassed by
+            signing out. There was no version of that gate worth building while
+            this button existed.
+
+            An account is required. THE NETWORK IS NOT: it is needed once, here,
+            and everything after stays exactly as offline as it has always been.
+            Do not read this as permission to make the app wait on a server.
+
+            NO DATA-RESCUE DOOR HERE EITHER, and that was a correction. One was
+            added when the skip went, on the reasoning that rescue has three
+            deliberate entry points and onboarding was one of them. It is still
+            one of them: onboarding sits immediately AFTER this screen, and its
+            door never moved. So this was a fourth door, on the one screen where
+            it makes least sense -- everybody here is either signing in or
+            creating an account, and finding local books does not get either
+            done. Rescue is for after you are in, which is where all three of
+            its doors already are. */}
       </div>
     </div>
   );

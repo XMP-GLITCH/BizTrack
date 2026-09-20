@@ -8,7 +8,7 @@ code and keep `tests/rls_test.sql` passing.
 ## Setting up a project
 
 1. Create a project at supabase.com. Pick the region closest to your users.
-2. Run the migrations in `migrations/`, in filename order — SQL Editor, or
+2. Run the migrations in `migrations/`, in filename order, via the SQL Editor or
    `supabase db push` if you use the CLI.
 3. Copy the project URL and anon key into `.env.local` (see `.env.example`).
 4. Auth → Providers: enable **Email**. Turn on "Confirm email" for production.
@@ -25,7 +25,7 @@ Needs a local Postgres (any recent version):
 ```
 
 `_supabase_shim.sql` provides the small part of Supabase the migrations depend
-on — `auth.users`, `auth.uid()`, and the `anon`/`authenticated` roles — so the
+on, `auth.users`, `auth.uid()`, and the `anon`/`authenticated` roles, so the
 real migration files run unmodified against plain Postgres.
 
 ## Design decisions worth knowing before changing anything
@@ -36,7 +36,7 @@ lives on the business so an amount is always interpretable.
 
 **Stock on hand is not stored.** It is derived by summing `stock_movements`.
 Two devices offline, each selling the last unit, both insert a row and the total
-comes out right — a stored counter would have both write "4" and lose a sale.
+comes out right. A stored counter would have both write "4" and lose a sale.
 
 **Deletes are soft.** A hard delete cannot sync: the other device cannot tell
 "deleted" from "not seen yet". Every table that syncs has `deleted_at`.
@@ -51,7 +51,7 @@ duplicating rows.
 
 **Access is by membership, never by `owner_id` directly.** `business_members`
 exists from day one even though the UI creates exactly one row per business
-today. Adding staff accounts later needs no policy changes — only new rows.
+today. Adding staff accounts later needs no policy changes, only new rows.
 Retrofitting tenancy onto live data is the migration you do not want.
 
 **`is_business_member()` is `SECURITY DEFINER` on purpose.** A policy on
@@ -60,6 +60,6 @@ the lookup as the definer skips RLS inside the function and breaks the cycle.
 This is the most common way to break a Supabase schema; there is a test for it.
 
 **Plan state never gates data access.** `profiles.plan` is recorded in the
-database, but an expired plan makes the app read-only in the *client* —
+database, but an expired plan makes the app read-only in the *client*,
 everything stays visible and exportable, only new writes stop. Enforcing it in
 RLS would put someone's own books behind their subscription status.

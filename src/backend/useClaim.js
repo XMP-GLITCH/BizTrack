@@ -79,7 +79,7 @@ export function useClaim(userId) {
 
   /**
    * Record the decision. `merge` keeps everything from both sides, which is
-   * what the ordinary sync already does — so the work here is the backup and
+   * what the ordinary sync already does, so the work here is the backup and
    * getting out of the way.
    *
    * `adopt` sets this device's books aside and takes the account's instead. The

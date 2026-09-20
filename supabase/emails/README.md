@@ -8,10 +8,10 @@ migration.
 
 | File | Dashboard template | Subject to set |
 |---|---|---|
-| `confirm-signup.html` | Confirm signup | `Confirm your email — BizTrack` |
+| `confirm-signup.html` | Confirm signup | `Confirm your BizTrack email` |
 | `magic-link.html` | Magic Link | `Your BizTrack sign-in link` |
 | `reset-password.html` | Reset Password | `Set a new BizTrack password` |
-| `change-email.html` | Change Email Address | `Confirm your new email — BizTrack` |
+| `change-email.html` | Change Email Address | `Confirm your new BizTrack email` |
 | `reauthentication.html` | Reauthentication | `Your BizTrack confirmation code` |
 
 ## Installing
@@ -20,7 +20,7 @@ Dashboard → **Authentication** → **Emails** → pick the template tab → pa
 file's whole contents into the message body → set the subject from the table
 above → **Save**. One tab at a time; there is no bulk import.
 
-`Invite user` is deliberately not included. The UI never invites anyone —
+`Invite user` is deliberately not included. The UI never invites anyone,
 `business_members` exists so tenancy does not have to be retrofitted later, but
 nothing creates a second row. A template for a flow that cannot happen would
 just rot.
@@ -29,7 +29,7 @@ just rot.
 
 **One image, and only one.** The wordmark, and nothing else. Most inboxes block
 remote images by default, so every additional image is a broken box on first
-open and bytes on a metered connection — a real cost for this audience rather
+open and bytes on a metered connection, a real cost for this audience rather
 than a rounding error. The logo earns its place because it is what makes the
 message recognisably yours; it degrades to styled alt text when blocked (see
 **The logo** below). Nothing else in these files is an image: the rules, the
@@ -38,7 +38,7 @@ code block and the buttons are all drawn in CSS.
 **The six-digit code is not a fallback.** Every template shows `{{ .Token }}`
 next to the button. On Android, tapping a link frequently opens a browser that
 is *not* the installed PWA, so the session lands somewhere the user cannot see
-it — the same reasoning that kept magic-link-only sign-in out of `auth.js`. The
+it, the same reasoning that kept magic-link-only sign-in out of `auth.js`. The
 code lets someone finish inside the app they already have open.
 
 **Tap targets.** Padding is on the `<a>`, not its container, so the entire
@@ -71,7 +71,7 @@ Send yourself a test through each provider before shipping that.
 for development only:
 
 - It delivers **only to addresses on your Supabase team**. A beta tester's
-  address gets nothing — no bounce, no error in the app, just silence.
+  address gets nothing: no bounce, no error in the app, just silence.
 - It is rate-limited to a handful of messages per hour, shared across every
   template.
 
@@ -80,7 +80,7 @@ That is invisible from inside the app, which is what makes it dangerous: sign-up
 appears to work and the account is simply never confirmed.
 
 Fix it at **Project Settings → Authentication → SMTP Settings** with any
-transactional provider — Resend, Brevo and Mailgun all have free tiers that
+transactional provider. Resend, Brevo and Mailgun all have free tiers that
 cover a beta at this scale. Then set **Sender name** to `BizTrack` and use a
 sender address on a domain you control.
 
@@ -95,7 +95,7 @@ for launch.
 ## The logo
 
 All five templates load the wordmark from an absolute URL. It is the only image
-in them — everything else is drawn with type and table cells, because inboxes
+in them; everything else is drawn with type and table cells, because inboxes
 block remote images by default and each one costs bytes on a metered connection.
 
 The `<img>` carries `alt="BizTrack"` styled in the brand serif, so a blocked
@@ -110,8 +110,8 @@ Storage, which works today and does not depend on the app being deployed:
 3. Confirm it opens in a private window:
    `https://ufyyurmekegbzkqjisdb.supabase.co/storage/v1/object/public/brand/wordmark-light.png`
 
-To host it somewhere else — the deployed app serves it at `/wordmark-light.png`
-— regenerate with that URL instead:
+To host it somewhere else (the deployed app serves it at `/wordmark-light.png`),
+regenerate with that URL instead:
 
 ```sh
 BIZTRACK_LOGO_URL=https://yourdomain/wordmark-light.png python supabase/emails/generate.py

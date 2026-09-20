@@ -16,7 +16,7 @@
  * cursor every incremental pull depends on.
  */
 
-import { makeBusiness, makeItem, makeSale, makeStockMovement } from "../domain/schema.js";
+import { makeBusiness, makeItem, makeSale, makeStockMovement, makeInvoice } from "../domain/schema.js";
 
 const nullable = (v) => (v === undefined ? null : v);
 
@@ -53,6 +53,7 @@ export const itemToRow = (item, businessId) => ({
   business_id: businessId,
   name: item.name,
   unit_price: item.unitPrice,
+  photo_id: nullable(item.photoId),
   created_at: item.createdAt,
   archived_at: nullable(item.archivedAt),
   deleted_at: nullable(item.deletedAt),
@@ -62,6 +63,7 @@ export const rowToItem = (row) => makeItem({
   id: row.id,
   name: row.name,
   unitPrice: row.unit_price,
+  photoId: row.photo_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   archivedAt: row.archived_at,
@@ -81,6 +83,7 @@ export const saleToRow = (sale, businessId, userId) => ({
   asking_price: sale.askingPrice,
   note: sale.note ?? "",
   is_custom: Boolean(sale.isCustom),
+  group_id: nullable(sale.groupId),
   occurred_at: sale.occurredAt,
   created_by: nullable(userId),
   created_at: sale.createdAt,
@@ -97,7 +100,48 @@ export const rowToSale = (row) => makeSale({
   askingPrice: row.asking_price,
   note: row.note,
   isCustom: row.is_custom,
+  groupId: row.group_id,
   occurredAt: row.occurred_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  deletedAt: row.deleted_at,
+});
+
+/* ── invoice ───────────────────────────────────────────────────────────────── */
+//
+// Lines travel as JSONB rather than a child table. They are document content:
+// never queried alone, never aggregated, never summed into anything. A child
+// table would buy joins nobody needs and a second place for the same snapshot
+// to drift from.
+
+export const invoiceToRow = (invoice, businessId, userId) => ({
+  id: invoice.id,
+  business_id: businessId,
+  created_by: userId ?? null,
+  customer_name: invoice.customerName ?? "",
+  customer_contact: invoice.customerContact ?? "",
+  note: invoice.note ?? "",
+  lines: invoice.lines ?? [],
+  issued_at: invoice.issuedAt,
+  due_at: nullable(invoice.dueAt),
+  paid_at: nullable(invoice.paidAt),
+  paid_method: invoice.paidMethod ?? "",
+  sale_group_id: nullable(invoice.saleGroupId),
+  created_at: invoice.createdAt,
+  deleted_at: nullable(invoice.deletedAt),
+});
+
+export const rowToInvoice = (row) => makeInvoice({
+  id: row.id,
+  customerName: row.customer_name,
+  customerContact: row.customer_contact,
+  note: row.note,
+  lines: row.lines,
+  issuedAt: row.issued_at,
+  dueAt: row.due_at,
+  paidAt: row.paid_at,
+  paidMethod: row.paid_method,
+  saleGroupId: row.sale_group_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   deletedAt: row.deleted_at,
@@ -137,18 +181,26 @@ export function flattenBusiness(business, ownerId) {
     business: businessToRow(business, ownerId),
     items: (business.items || []).map((i) => itemToRow(i, business.id)),
     sales: (business.sales || []).map((s) => saleToRow(s, business.id, ownerId)),
+    invoices: (business.invoices || []).map((v) => invoiceToRow(v, business.id, ownerId)),
     movements: (business.stockMovements || []).map((m) => movementToRow(m, business.id, ownerId)),
   };
 }
 
 export function flattenBusinesses(businesses, ownerId) {
-  const out = { businesses: [], items: [], sales: [], movements: [] };
+  // `invoices` was missing from both this accumulator and the loop below, so
+  // `flat.invoices` from `flattenBusiness` was silently dropped: every push
+  // ran, `out.invoices` was never populated, and `upsertAll("invoices",
+  // undefined)` threw partway through `pushChanges` -- after businesses,
+  // items, sales and movements had already gone, but before the pull ran and
+  // before the sync loop could ever record a success.
+  const out = { businesses: [], items: [], sales: [], movements: [], invoices: [] };
   for (const b of businesses || []) {
     const flat = flattenBusiness(b, ownerId);
     out.businesses.push(flat.business);
     out.items.push(...flat.items);
     out.sales.push(...flat.sales);
     out.movements.push(...flat.movements);
+    out.invoices.push(...flat.invoices);
   }
   return out;
 }
@@ -158,18 +210,20 @@ export function flattenBusinesses(businesses, ownerId) {
  * Children whose business did not come back are dropped rather than orphaned;
  * an incremental pull can legitimately return a child without its parent.
  */
-export function assembleBusinesses({ businesses = [], items = [], sales = [], movements = [] }) {
+export function assembleBusinesses({ businesses = [], items = [], sales = [], movements = [], invoices = [] }) {
   const byId = new Map();
   for (const row of businesses) {
-    byId.set(row.id, { ...rowToBusiness(row), items: [], sales: [], stockMovements: [] });
+    byId.set(row.id, { ...rowToBusiness(row), items: [], sales: [], stockMovements: [], invoices: [] });
   }
   for (const row of items) byId.get(row.business_id)?.items.push(rowToItem(row));
   for (const row of sales) byId.get(row.business_id)?.sales.push(rowToSale(row));
   for (const row of movements) byId.get(row.business_id)?.stockMovements.push(rowToMovement(row));
+  for (const row of invoices) byId.get(row.business_id)?.invoices.push(rowToInvoice(row));
 
   for (const business of byId.values()) {
     // Newest sale first, matching how the UI lists them.
     business.sales.sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)));
+    business.invoices.sort((a, b) => String(b.issuedAt).localeCompare(String(a.issuedAt)));
   }
   return [...byId.values()];
 }

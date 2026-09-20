@@ -80,12 +80,12 @@ export function render(
   switch (type) {
     case "signup":
       return {
-        subject: "Confirm your email — BizTrack",
+        subject: "Confirm your BizTrack email",
         html: shell({
           preheader: "One tap and your books start backing up.",
           heading: "Confirm your email",
           body:
-            p("Welcome to BizTrack. Confirm this address and your inventory, sales and profit start backing up — so your books survive a lost, stolen or replaced phone.") +
+            p("Welcome to BizTrack. Confirm this address and your inventory, sales and profit start backing up, so your books survive a lost, stolen or replaced phone.") +
             p("This is the last step.") +
             code(),
           ctaLabel: "Or confirm in a browser instead",
@@ -103,7 +103,7 @@ export function render(
           heading: "Set a new password",
           body:
             p("Someone asked to reset the password on this BizTrack account. If that was you, choose a new one now.") +
-            p("Your books are untouched either way — nothing is deleted, and nothing is lost if you ignore this.") +
+            p("Your books are untouched either way. Nothing is deleted, and nothing is lost if you ignore this.") +
             code(),
           ctaLabel: "Or reset in a browser instead",
           ctaUrl: url,
@@ -130,7 +130,7 @@ export function render(
 
     case "email_change":
       return {
-        subject: "Confirm your new email — BizTrack",
+        subject: "Confirm your new BizTrack email",
         html: shell({
           preheader: "Confirm the new address on your BizTrack account.",
           heading: "Confirm your new address",
@@ -141,7 +141,7 @@ export function render(
           ctaLabel: "Or confirm in a browser instead",
           ctaUrl: url,
           ctaVariant: "link",
-          footerNote: "Didn't request this? Ignore it, then change your password — someone may know your current one.",
+          footerNote: "Didn't request this? Ignore it, then change your password. Someone may know your current one.",
         }),
       };
 

@@ -33,6 +33,41 @@ export function buildBackup({ businesses, userName, userEmail, currency, lowStoc
   };
 }
 
+/**
+ * The last-resort export, for when the app cannot open the books normally.
+ *
+ * It lived inside main.jsx and so could only be reached from the error
+ * boundary. The crash screen inside App.jsx offers the same button, wired to
+ * `downloadSnapshot`, which hands over the PRE-UPGRADE copy: a file written
+ * once before the ledger migration and never rewritten since. A user told
+ * "Download my data" got their books as of migration day, with every sale after
+ * it missing, at the exact moment they had been told nothing was lost.
+ *
+ * Reads storage directly rather than going through the store, because the
+ * fault being recovered from may be in that layer.
+ */
+export function emergencyExport(readSnapshot) {
+  try {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      reason: "crash-recovery",
+      live: JSON.parse(localStorage.getItem("biztrack-storage-v3") || "null"),
+      preUpgrade: readSnapshot ? readSnapshot() : null,
+    };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `BizTrack_Recovery_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Save the backup as a file the user keeps. Returns false if the browser refused. */
 export function saveBackupFile(payload) {
   try {
@@ -99,7 +134,7 @@ export function pickBackupFile() {
         try {
           parsed = JSON.parse(text);
         } catch {
-          return reject(new Error("That file isn't a BizTrack backup — it isn't readable as one."));
+          return reject(new Error("That file isn't a BizTrack backup. It isn't readable as one."));
         }
 
         // Truncation is the failure this whole module exists to avoid, and a
