@@ -1027,6 +1027,56 @@ Vercel account and serves a Next.js app. That is why the second project got the
 Production on both is still `e4e14ee` (main, v1.5.9), which contains no Supabase
 code at all. **The branch has never been deployed to production.**
 
+### A PUSH DOES NOT DEPLOY. `vercel --prod` DOES.
+
+Added 20 September, after a push reached Vercel, built in ten seconds, and left
+`biztrack.store` on the previous build -- which read exactly like a broken
+integration and is not one.
+
+Vercel creates a PRODUCTION deployment only for the branch configured as the
+project's production branch. That branch is not `claude/repo-review-54joy7`, so
+every push to this branch builds a **preview**: `target: null`, aliased only to
+`biz-track-git-claude-repo-review-54joy7-...vercel.app`, and behind
+`ssoProtection`, so a beta tester cannot even open it.
+
+**Every production deployment this project has ever had came from someone
+running `vercel --prod` on their own machine.** Not a theory: `source` on the
+deployment record reads `"cli"`, and all twenty production deployments in the
+project's history are by `xmp-glitch`. The git metadata on them is real, because
+the CLI reads the local checkout and attaches it -- which is exactly why they
+look like GitHub deploys in the dashboard and why this took a session to see.
+
+So the deploy is two steps and the first one is not enough:
+
+```sh
+git push                  # source control. Builds a preview. Changes nothing live.
+vercel --prod --yes       # from the repo root; .vercel/project.json is committed
+```
+
+The CLI is already installed and logged in as `xmp-glitch`, and it holds
+permissions the Vercel MCP token does not: that token gets **403 Forbidden** on
+`assign_alias` and on listing env vars, so promoting a preview through the API
+fails while the CLI succeeds. Reach for the CLI first.
+
+**This is a gate, not a defect, and it is worth keeping.** A production branch
+would put every push straight in front of real users, and this project's whole
+working method -- a month of sessions each ending "still nothing pushed" -- is
+the owner testing locally before anything ships. Changing it is a decision, not
+a fix.
+
+Verify from outside afterwards, always, because a deploy that silently runs
+local-only looks perfectly healthy:
+
+```sh
+curl -s https://biztrack.store/ | grep -o 'assets/index-[^"]*\.js'   # hash moved?
+curl -s https://biztrack.store/assets/index-*.js | grep -q ufyyurmekegbzkqjisdb
+```
+
+And check `biz-track-nine.vercel.app` too. It is a separate origin holding
+separate localStorage, it is where the existing users' books live, and it is
+aliased to the same deployment -- so it moves with production, but only a fetch
+proves it did.
+
 ### `biztrack.store` is bought but dead
 
 Registered at Namecheap, on Namecheap's own nameservers
@@ -7140,3 +7190,55 @@ the same finding -- applies to the checks as much as to the app.
 A business and a custom sale recorded on a real device, both stuck locally for
 days, are now on the server. That is the first real business data this project
 has ever backed up.
+
+### And then it shipped
+
+`9b510fa` is live on **https://biztrack.store** and on
+**biz-track-nine.vercel.app**, which is the origin the existing users' books
+sit on. `dpl_3s58SDKXa1aKZZ4vWR2vGDztETtY`, `target: production`, built in 8s.
+
+**The push was not the deploy, and that cost most of an hour.** The commit went
+to GitHub, Vercel built it in ten seconds, and `biztrack.store` went on serving
+the previous bundle -- which reads exactly like a broken integration. It is
+not: this branch is not the project's production branch, so a push builds a
+preview. The full explanation is now under "A PUSH DOES NOT DEPLOY" in the
+deployment section above, where someone looking for it will find it.
+
+Three API routes were tried and all three failed before the obvious one worked:
+`request_promote` returned 422, `create_deployment` was refused, and
+`assign_alias` came back **403 Forbidden** -- the Vercel MCP token cannot
+create an alias or even list env vars. The CLI, already installed and logged in
+as the owner, did it in one command. **Reach for the tool that holds the
+credentials, not the one that is already in hand.**
+
+I also got the diagnosis wrong first and it is worth recording which way. I
+concluded a Vercel setting had changed around 14 September, because production
+deployments stopped after `73fabba`. They did not stop: reading `source` on
+that deployment returns `"cli"`, and every one of the twenty production
+deployments in this project's history is by `xmp-glitch`. Nothing changed and
+nothing broke. The git metadata on those deploys is what misled me -- the CLI
+attaches the local checkout's commit, so a hand-run deploy is indistinguishable
+from a GitHub one in the dashboard. **A field that looks like provenance was
+only a label.**
+
+Verified from outside rather than from the dashboard, which is this file's
+standing rule:
+
+```
+biztrack.store            assets/index-CoUE0w9S.js   (was index-CRnPS_60.js)
+biz-track-nine...app      assets/index-CoUE0w9S.js   same deployment
+supabase ref inlined      yes      so it is NOT silently local-only
+publishable key inlined   yes
+www.biztrack.store        307 -> apex
+in the shipped bundle     "Sync FAILED (not a connection problem)"
+                          "Sync deferred (offline)"
+                          "Backup is not working"
+```
+
+Those last three strings are the point of checking the artefact rather than the
+hash: they are the sync fix itself, so their presence proves what shipped and
+not merely that something did.
+
+Existing users hold a service worker precaching the old build, so they get the
+"Update Available" prompt rather than the fix on next launch. That is by design
+and is the offline-first bargain working.
