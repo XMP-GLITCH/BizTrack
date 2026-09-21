@@ -12,7 +12,27 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
-      registerType: 'prompt',
+      /**
+       * The app updates itself rather than asking.
+       *
+       * It was `prompt`, which means a new worker installs and then waits
+       * for an explicit "Update now". That button sat inside the main shell,
+       * past eight early returns, so a person on a gate screen could never
+       * reach it and could not leave the build they were on -- which is
+       * exactly what happened to the owner on 21 September, on the day a
+       * critical sync fix shipped.
+       *
+       * With `autoUpdate` the new worker takes over on the next launch and
+       * vite-plugin-pwa reloads the page into it. Requires `skipWaiting()`
+       * and `clients.claim()` in `src/sw.js`, because injectManifest does not
+       * add them: without those the worker still waits and this setting is
+       * inert.
+       *
+       * The trade, made knowingly: an unsubmitted form is lost when an update
+       * lands. Recorded sales are not -- every mutation reaches localStorage
+       * before this can fire.
+       */
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'avatars/*.png', 'sounds/*.mp3'],
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],

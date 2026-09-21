@@ -7,6 +7,36 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
+/**
+ * TAKE OVER IMMEDIATELY. Without these two lines `registerType: 'autoUpdate'`
+ * does nothing at all.
+ *
+ * A new worker installs and then sits in "waiting" until either every client
+ * closes or something sends it SKIP_WAITING. Under the old `prompt` strategy
+ * that something was the "Update now" button -- which lived inside the main
+ * shell, past eight early returns, so anyone on the sign-in wall, onboarding
+ * or the PIN lock could never reach it. The owner's own browser sat on a
+ * month-old build with no way out while the apex served the new one, and
+ * incognito was the only place the update appeared.
+ *
+ * `skipWaiting` activates this worker at once; `clients.claim()` puts open
+ * pages under it. vite-plugin-pwa's autoUpdate then sees `activated` with
+ * `isUpdate` and reloads the page, which is what actually completes the swap.
+ *
+ * The reload is not cosmetic and must not be delayed for long.
+ * `cleanupOutdatedCaches()` above deletes the PREVIOUS precache the moment
+ * this worker activates, so a page left running on the old build holds hashed
+ * chunk URLs that no longer exist -- the lazily-imported chart is the one
+ * that would 404. Reloading straight away is the shorter window, not the
+ * longer one.
+ *
+ * The cost, accepted deliberately: a half-filled form is lost when this
+ * fires. Recorded sales are not, because every mutation is already written
+ * to localStorage before this can happen.
+ */
+self.skipWaiting();
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+
 registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')));
 
 // Cache fonts

@@ -542,10 +542,39 @@ function useRescueData(hydrated, notify = () => {}) {
 }
 
 export default function BizTrack() {
-  const {
-    needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
+  /**
+   * These two are declared HERE, above `useRegisterSW`, and that is not
+   * arbitrary. `onNeedReload` below is stored once on the first render and
+   * kept for the life of the app, so a setter declared further down would be
+   * in its temporal dead zone at the moment the callback is created. That is
+   * the exact fault this project already fixed once, in `checkUpdates`
+   * reaching for a `showToast` declared 150 lines later -- which never threw
+   * only because nothing happened to call it during the first render.
+   * Declaring them before their caller makes it a rule instead of an
+   * accident.
+   */
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useRegisterSW({
+    /**
+     * `registerType: 'autoUpdate'`, so there is no "Update now" button any
+     * more: the new worker activates itself and this fires. Supplying
+     * `onNeedReload` REPLACES the library's bare `window.location.reload()`,
+     * which is the point -- an app that silently restarts itself reads as a
+     * crash on a mid-range Android, and this audience is standing at a stall
+     * when it happens.
+     *
+     * The wait is short on purpose. `cleanupOutdatedCaches()` has already
+     * deleted the previous precache by now, so the running page is holding
+     * hashed chunk URLs that no longer resolve. 700ms is long enough to read
+     * four words and far too short to reach the one lazily-imported chunk.
+     */
+    onNeedReload() {
+      setIsUpdating(true);
+      setUpdateProgress(100);
+      setTimeout(() => window.location.reload(), 700);
+    },
     onRegistered(r) {
       console.log('SW Registered: ' + r)
     },
@@ -615,8 +644,8 @@ export default function BizTrack() {
   const { isRescuing, checkRescue } = useRescueData(hydrated, showToast);
 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [updateProgress, setUpdateProgress] = useState(0);
-  const [isUpdating, setIsUpdating] = useState(false);
+  // `updateProgress` and `isUpdating` live at the top of this component, above
+  // `useRegisterSW`. See the note there.
 
   // Session lives in React, not the persisted store: supabase-js already owns
   // session storage and refresh, and duplicating it is how you end up showing
@@ -670,32 +699,27 @@ export default function BizTrack() {
       try {
         const reg = await navigator.serviceWorker.getRegistration();
         if (reg) {
-          if (manual && reg.waiting) {
-            setUpdateProgress(100);
-            setTimeout(() => {
-              setUpdateProgress(0);
-              setNeedRefresh(true);
-            }, 500);
-            return;
-          }
-
           if (manual) {
             setUpdateProgress(40);
             await new Promise(r => setTimeout(r, 600)); // Visual buffer
             setUpdateProgress(70);
           }
-          
+
+          // This is the whole job now. Under `autoUpdate` a worker that finds
+          // something new skips waiting, activates, and `onNeedReload` takes
+          // it from there -- so there is nothing here to decide and no
+          // "Update now" to raise. What used to follow was three branches
+          // setting `needRefresh`, which can no longer become true.
           await reg.update();
-          
+
           if (manual) {
             setUpdateProgress(100);
             setTimeout(() => {
               setUpdateProgress(0);
-              if (!reg.waiting && !reg.installing) {
-                showToast("App is up to date!");
-              } else if (reg.waiting) {
-                setNeedRefresh(true);
-              }
+              // If an update HAD been found, the reload is already on its way
+              // and this never renders. Saying so is only correct in the case
+              // where nothing was found.
+              if (!reg.waiting && !reg.installing) showToast("App is up to date!");
             }, 500);
           }
         }
@@ -1000,27 +1024,7 @@ export default function BizTrack() {
       {ui}
       {activeToast && <Toast toast={activeToast} onDismiss={() => setActiveToast(null)} />}
       {dialog && <ConfirmDialog key={dialog.id} dialog={dialog} />}
-      {(needRefresh || isUpdating) && (
-        <UpdatePrompt
-          updating={isUpdating}
-          progress={updateProgress}
-          onLater={() => setNeedRefresh(false)}
-          onUpdate={() => {
-            setIsUpdating(true);
-            setUpdateProgress(10);
-            let p = 10;
-            const interval = setInterval(() => {
-              p += 15;
-              if (p >= 95) {
-                clearInterval(interval);
-                updateServiceWorker(true);
-              } else {
-                setUpdateProgress(p);
-              }
-            }, 150);
-          }}
-        />
-      )}
+      {isUpdating && <UpdatePrompt progress={updateProgress} />}
     </>
   );
 
@@ -1273,40 +1277,35 @@ export default function BizTrack() {
 }
 
 /**
- * "Update Available".
+ * "Updating BizTrack".
  *
- * THIS MUST RENDER ON EVERY SCREEN, INCLUDING THE GATES, and it did not.
+ * NOT a question. The app updates itself (`registerType: 'autoUpdate'`), so
+ * this reports a reload that is already happening rather than asking for one.
+ * It exists because a page that silently restarts itself reads as a crash on
+ * a mid-range Android, and this audience is standing at a stall when it
+ * happens.
  *
- * The service worker answers every navigation from the precached
- * `index.html` (`NavigationRoute(createHandlerBoundToURL('index.html'))`), so
- * a returning visitor keeps the build they last accepted until they accept
- * another. This prompt is the only thing in the app that offers that, and it
- * was rendered inside the main shell -- past eight early returns. Anyone
- * sitting on the sign-in wall, onboarding or the PIN lock could therefore
- * never be told an update existed, on the exact screens where being stuck on
- * an old build is most likely and least explicable.
+ * IT MUST RENDER ON EVERY SCREEN, INCLUDING THE GATES, which is why it lives
+ * in `withOverlays`. Its predecessor -- the "Update Available" prompt with
+ * Later and Update now -- was rendered inside the main shell, past eight
+ * early returns, so a person on the sign-in wall, onboarding or the PIN lock
+ * could never reach the only control that could move them off a stale build.
+ * That is the same shape as the dialogs that never settled, and the same
+ * answer: an early return is not a different screen, it is a different tree.
  *
- * That is the same shape as the dialogs that never settled, which this
- * project already fixed once and wrote down: an early return is not a
- * different screen, it is a different tree. `withOverlays` is the answer for
- * the same reason it was then.
+ * It is a `ModalShell` because the raw overlay it used to be was the app's
+ * last second shell -- no portal, no Escape, no focus restore. On a gate
+ * screen the portal is what makes it appear in the right place at all:
+ * `S.modalOverlay` is `position: absolute`, and ModalShell switches it to
+ * `fixed` when it has to fall back to `document.body`.
  *
- * It is a `ModalShell` rather than its own overlay because it was the app's
- * one remaining second shell: raw `S.modalOverlay` markup with no portal, no
- * Escape and no focus restore. On a gate screen the portal is what makes it
- * appear at all -- `S.modalOverlay` is `position: absolute`, and ModalShell
- * falls back to `document.body` when there is no `.bt-app` to portal into.
- *
- * While it is installing there is no way out on purpose: the worker is being
- * replaced and a reload is coming either way, so Escape, the overlay and the
- * X would all promise something this moment cannot honour.
+ * `onClose` is deliberately a no-op. The worker has already been replaced and
+ * the reload is scheduled, so Escape, the backdrop and the X would each
+ * promise something this moment cannot honour.
  */
-function UpdatePrompt({ updating, progress, onLater, onUpdate }) {
+function UpdatePrompt({ progress }) {
   return (
-    <ModalShell
-      onClose={updating ? () => {} : onLater}
-      title={updating ? "Installing update…" : "Update available"}
-    >
+    <ModalShell onClose={() => {}} title="Updating BizTrack">
       <div style={{ ...S.modalBody, textAlign: "center", alignItems: "center" }}>
         {/* The accent at 10%, and deliberately a literal: there is no accent
             tint token, and this is already the form this project calls
@@ -1314,24 +1313,14 @@ function UpdatePrompt({ updating, progress, onLater, onUpdate }) {
             is right on the light page and the dark one. Inventing a token for
             a single call site is the churn, not the fix. */}
         <div style={{ background: "rgba(193,127,90,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
-          <RefreshCw size={32} color="var(--accent-color)" className={updating ? "spin" : ""} />
+          <RefreshCw size={32} color="var(--accent-color)" className="spin" />
         </div>
         <p style={{ ...S.emptySub, margin: "0 0 4px" }}>
-          {updating
-            ? "Applying the latest changes. This will only take a moment."
-            : "A new version of BizTrack is ready. Updating keeps your records syncing correctly."}
+          Installing the latest version. Your records are safe.
         </p>
-
-        {updating ? (
-          <div style={{ width: "100%", height: 8, background: "var(--border-color)", borderRadius: 99, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent-color)", transition: "width var(--motion-move) var(--ease-out)" }} />
-          </div>
-        ) : (
-          <div style={{ display: "flex", gap: 12, width: "100%" }}>
-            <button type="button" style={{ ...S.ghostBtn, flex: 1, marginTop: 0 }} onClick={onLater}>Later</button>
-            <button type="button" style={{ ...S.primaryBtn, flex: 2, marginTop: 0 }} onClick={onUpdate}>Update now</button>
-          </div>
-        )}
+        <div style={{ width: "100%", height: 8, background: "var(--border-color)", borderRadius: 99, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent-color)", transition: "width var(--motion-move) var(--ease-out)" }} />
+        </div>
       </div>
     </ModalShell>
   );
