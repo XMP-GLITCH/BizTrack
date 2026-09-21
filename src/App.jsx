@@ -1000,6 +1000,27 @@ export default function BizTrack() {
       {ui}
       {activeToast && <Toast toast={activeToast} onDismiss={() => setActiveToast(null)} />}
       {dialog && <ConfirmDialog key={dialog.id} dialog={dialog} />}
+      {(needRefresh || isUpdating) && (
+        <UpdatePrompt
+          updating={isUpdating}
+          progress={updateProgress}
+          onLater={() => setNeedRefresh(false)}
+          onUpdate={() => {
+            setIsUpdating(true);
+            setUpdateProgress(10);
+            let p = 10;
+            const interval = setInterval(() => {
+              p += 15;
+              if (p >= 95) {
+                clearInterval(interval);
+                updateServiceWorker(true);
+              } else {
+                setUpdateProgress(p);
+              }
+            }, 150);
+          }}
+        />
+      )}
     </>
   );
 
@@ -1242,53 +1263,77 @@ export default function BizTrack() {
         {modal === "addSale" && <AddSaleModal ctx={ctx} />}
         {modal === "pin-setup" && <PinSetupModal ctx={ctx} />}
         {modal === "delete-biz" && <DeleteBizModal ctx={ctx} />}
-        {/* PWA UPDATE MODAL */}
-        {(needRefresh || isUpdating) && (
-          <div style={S.modalOverlay} className="bt-modal">
-             <div style={{ ...S.modalSheet, padding: 32, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }} className="bt-sheet">
-                <div style={{ background: "rgba(193,127,90,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-                   <RefreshCw size={32} color="var(--accent-color)" className={isUpdating ? "spin" : ""} />
-                </div>
-                <h2 style={S.modalTitle}>{isUpdating ? "Installing Update..." : "Update Available"}</h2>
-                <p style={{ ...S.greeting, color: "var(--text-secondary)", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
-                   {isUpdating ? "Downloading and applying the latest changes. This will only take a moment." : "A new version of BizTrack is ready with improvements and new features. Update now to stay current?"}
-                </p>
+        {/* The update prompt used to be HERE, and that was the defect: every
+            gate screen returns before this line, so the one message that can
+            un-stick a stale install could not reach the people most stuck on
+            one. It lives in `withOverlays` now. */}
+      </div>
+    </div>
+  );
+}
 
-                {isUpdating ? (
-                   <div style={{ width: "100%", height: 8, background: "var(--border-color)", borderRadius: 99, overflow: "hidden", marginBottom: 12 }}>
-                      <div style={{ height: "100%", width: `${updateProgress}%`, background: "var(--accent-color)", transition: "width var(--motion-move) var(--ease-out)" }} />
-                   </div>
-                ) : (
-                  <div style={{ display: "flex", gap: 12, width: "100%" }}>
-                     <button 
-                       style={{ ...S.ghostBtn, flex: 1 }} 
-                       onClick={() => setNeedRefresh(false)}
-                     >Later</button>
-                     <button 
-                       style={{ ...S.primaryBtn, flex: 2, marginTop: 0 }} 
-                       onClick={() => {
-                         setIsUpdating(true);
-                         setUpdateProgress(10);
-                         // Simulate installation progress before reload
-                         let p = 10;
-                         const interval = setInterval(() => {
-                           p += 15;
-                           if (p >= 95) {
-                             clearInterval(interval);
-                             updateServiceWorker(true);
-                           } else {
-                             setUpdateProgress(p);
-                           }
-                         }, 150);
-                       }}
-                     >Update Now</button>
-                  </div>
-                )}
-             </div>
+/**
+ * "Update Available".
+ *
+ * THIS MUST RENDER ON EVERY SCREEN, INCLUDING THE GATES, and it did not.
+ *
+ * The service worker answers every navigation from the precached
+ * `index.html` (`NavigationRoute(createHandlerBoundToURL('index.html'))`), so
+ * a returning visitor keeps the build they last accepted until they accept
+ * another. This prompt is the only thing in the app that offers that, and it
+ * was rendered inside the main shell -- past eight early returns. Anyone
+ * sitting on the sign-in wall, onboarding or the PIN lock could therefore
+ * never be told an update existed, on the exact screens where being stuck on
+ * an old build is most likely and least explicable.
+ *
+ * That is the same shape as the dialogs that never settled, which this
+ * project already fixed once and wrote down: an early return is not a
+ * different screen, it is a different tree. `withOverlays` is the answer for
+ * the same reason it was then.
+ *
+ * It is a `ModalShell` rather than its own overlay because it was the app's
+ * one remaining second shell: raw `S.modalOverlay` markup with no portal, no
+ * Escape and no focus restore. On a gate screen the portal is what makes it
+ * appear at all -- `S.modalOverlay` is `position: absolute`, and ModalShell
+ * falls back to `document.body` when there is no `.bt-app` to portal into.
+ *
+ * While it is installing there is no way out on purpose: the worker is being
+ * replaced and a reload is coming either way, so Escape, the overlay and the
+ * X would all promise something this moment cannot honour.
+ */
+function UpdatePrompt({ updating, progress, onLater, onUpdate }) {
+  return (
+    <ModalShell
+      onClose={updating ? () => {} : onLater}
+      title={updating ? "Installing update…" : "Update available"}
+    >
+      <div style={{ ...S.modalBody, textAlign: "center", alignItems: "center" }}>
+        {/* The accent at 10%, and deliberately a literal: there is no accent
+            tint token, and this is already the form this project calls
+            correct -- alpha over whatever ground is behind it, so one value
+            is right on the light page and the dark one. Inventing a token for
+            a single call site is the churn, not the fix. */}
+        <div style={{ background: "rgba(193,127,90,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+          <RefreshCw size={32} color="var(--accent-color)" className={updating ? "spin" : ""} />
+        </div>
+        <p style={{ ...S.emptySub, margin: "0 0 4px" }}>
+          {updating
+            ? "Applying the latest changes. This will only take a moment."
+            : "A new version of BizTrack is ready. Updating keeps your records syncing correctly."}
+        </p>
+
+        {updating ? (
+          <div style={{ width: "100%", height: 8, background: "var(--border-color)", borderRadius: 99, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent-color)", transition: "width var(--motion-move) var(--ease-out)" }} />
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: 12, width: "100%" }}>
+            <button type="button" style={{ ...S.ghostBtn, flex: 1, marginTop: 0 }} onClick={onLater}>Later</button>
+            <button type="button" style={{ ...S.primaryBtn, flex: 2, marginTop: 0 }} onClick={onUpdate}>Update now</button>
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 }
 
@@ -3318,8 +3363,36 @@ function ModalShell({ onClose, title, children }) {
   const host = typeof document === "undefined" ? null : (document.querySelector(".bt-app") || document.body);
   if (!host) return null;
 
+  /**
+   * `S.modalOverlay` is `position: absolute` ON PURPOSE: inside `.bt-app` that
+   * makes a sheet cover the framed column and centre inside the 780px frame at
+   * tablet width, the way every other sheet does.
+   *
+   * But the GATE screens have no `.bt-app`, so the portal falls back to
+   * `document.body`, which is not positioned -- and an absolute box then hangs
+   * off the initial containing block at the DOCUMENT origin. Any page scroll
+   * therefore drags the backdrop out of view while the sheet stays put.
+   * Measured on the sign-in wall at 390x820: overlay top **-214**, so the
+   * bottom quarter of the screen had no scrim under a sheet sitting over it.
+   *
+   * This project has already shipped this exact bug once, measured at
+   * -193..627 on an 820px window, and fixed it by portalling. Portalling was
+   * only half of it: where there is no frame to sit inside, the overlay has to
+   * be anchored to the VIEWPORT instead. Desktop hid it because the gate
+   * screens fit there and nothing scrolls.
+   *
+   * It reaches every dialog raised from a gate, which is the data rescue on
+   * onboarding and on the PIN lock -- the screens someone who has lost their
+   * books actually lands on.
+   */
+  const framed = host !== document.body;
+
   return createPortal(
-    <div style={S.modalOverlay} className="bt-modal" onClick={onClose}>
+    <div
+      style={framed ? S.modalOverlay : { ...S.modalOverlay, position: "fixed" }}
+      className="bt-modal"
+      onClick={onClose}
+    >
       <div
         ref={sheet}
         tabIndex={-1}
