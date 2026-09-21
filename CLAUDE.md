@@ -7398,3 +7398,75 @@ the check in production. `vite preview` sends `no-cache`, so neither locally.
 Anyone already stranded on a gate screen of an older build still needs a
 manual unstick once -- close every tab and the installed app, or unregister
 the worker. After that nobody can enter the state again.
+
+### Four faults the owner found in one message
+
+All measured in a browser. **Two of my first readings were wrong, both
+because a probe hit something other than what it claimed** -- see the end.
+
+**1. THE TERMS BOX COULD NOT BE TICKED**, on `ConsentScreen`, which every
+existing account must pass since `LEGAL_VERSION` moved. A real click at the
+centre of the visible box left `checked` false; a synthetic `label.click()`
+set it true.
+
+The whole row was a `<label>`, and **a label forwards every click inside it to
+its control** -- so the box ALSO carried its own `onClick` calling
+`setAccepted(!accepted)`, and two handlers fought over one tap. The same
+wrapper made Terms and Privacy toggle consent instead of opening the document,
+**which is a bug this file already records as fixed in `AuthScreen`.** The
+ConsentScreen copy never got the fix. That is the drift this project keeps
+paying for: two copies of one job, and the one nobody looked at is the one
+that rots.
+
+Both boxes also measured a **20x20 hit area** against this project's own 44px
+minimum, on the one control standing between a person and an account. The
+visible box stays 20; the tap area is 44, with a negative margin so the row
+does not move. The 12px overhang lands on "I agree to the", itself a label for
+the same control, so the overlap costs nothing.
+
+**2. SIGNING IN DROPPED YOU ON THE LANDING PAGE.** `signInWithOAuth` sets
+`redirectTo: window.location.origin`, so Google returns to `/?code=...` -- and
+**at that instant supabase-js has not exchanged the code**, so there is no
+`-auth-token` in localStorage. The pre-paint check read "new visitor" and drew
+the marketing page over the app the person had just signed into; they then had
+to tap "I already have an account" to dismiss a page they should never have
+seen. The callback now counts as returning: `code`/`error` in the query,
+`access_token`/`recovery`/`reset` in the hash. Anything else that changes
+`redirectTo` has to be added here too.
+
+**3. ONBOARDING ASKED AN ACCOUNT FOR ITS OWN NAME AND EMAIL.** `userName`,
+`userEmail` and `onboardingComplete` are DEVICE-LOCAL and never sync, so a
+second phone runs the whole wizard. The name is prefilled from the provider
+now, and **the email step is skipped entirely when signed in**: the account's
+address is the verified one, and a second field invites a DIFFERENT,
+unverified address that nothing in the app would ever use. Redundant is the
+small problem; contradictory is the real one. The underlying split is NOT
+fixed -- a device that has never seen the account still starts at step 0.
+
+**4. "THIS PHONE IS OUT OF SPACE" WAS A GUESS.** Every failed photo write said
+it, from a check that can match other things. A person told their phone is
+full deletes photographs to make room for a photograph, and if the real fault
+was the database or the encoder they do it for nothing -- the same defect as
+the sync screen saying "waiting for a connection" while the server answered
+403 on schedule. It names what actually failed now and prints the size, which
+is **diagnostic rather than decorative**: `compressImage` falls back to the
+ORIGINAL camera file when the encoder returns a non-JPEG, so a figure in
+megabytes means compression was skipped, not that the shelf is full. **Root
+cause still unknown**; this is what will show it.
+
+```
+AuthScreen signup   hit 44x44  tap -> SPAN|label:accept-legal    TOGGLED
+ConsentScreen       hit 44x44  tap -> SPAN|label:consent-accept  TOGGLED
+landing   new visitor SHOWN · ?code= hidden · #access_token hidden
+          ?landing SHOWN
+onboarding  Welcome -> What's your name? (prefilled) -> All set
+            never asks for an email
+```
+
+**Two probe faults, both the recorded shape.** The first swept the document
+for anything 16-60px and tapped a `<p>`. The second tapped `P.heroNote` --
+**the LANDING PAGE, still covering the app**, because the probe never
+dismissed it. Both reported "does not toggle" about a control that was never
+touched, and the second nearly had me rewrite a screen that was working.
+A probe that does not report WHAT IT HIT cannot tell a broken control from a
+missed one.
