@@ -7242,3 +7242,98 @@ not merely that something did.
 Existing users hold a service worker precaching the old build, so they get the
 "Update Available" prompt rather than the fix on next launch. That is by design
 and is the offline-first bargain working.
+
+---
+
+## Session log: 21 September 2026: the prompt could not reach the stuck
+
+The owner opened `biztrack.store` and got the OLD build, with the old
+onboarding and no landing page, and no way to move off it. Two separate
+things were true at once and they hid each other.
+
+### THE SERVICE WORKER SERVES THE BUILD YOU LAST ACCEPTED
+
+`src/sw.js` has `registerRoute(new NavigationRoute(createHandlerBoundToURL(
+'index.html')))`, so **every navigation is answered from the precached
+index.html**. A returning visitor does not get what the server is serving;
+they get what their worker already holds, until they accept an update. The
+apex can be correct and a person can still be looking at last month's app --
+and `curl` will agree with the server, not with them.
+
+The only control that changes that is the "Update Available" prompt, **and it
+was rendered inside the main shell, past eight early returns.** So anyone on
+the sign-in wall, onboarding or the PIN lock could never be told an update
+existed -- the exact screens where being stuck on an old build is most likely
+and least explicable. It is in `withOverlays` now, which is where the toast
+and the dialog already went, for a reason this file had already written down:
+**an early return is not a different screen, it is a different tree.**
+
+It was also the last SECOND SHELL in the app: raw `S.modalOverlay` markup
+with no portal, no Escape and no focus restore, which the rules above warn
+about by name. It is a `ModalShell` now and inherits all three.
+
+### WHICH EXPOSED A REAL BUG IN EVERY GATE-SCREEN DIALOG
+
+`S.modalOverlay` is `position: absolute` deliberately: inside `.bt-app` that
+covers the framed column and centres in the 780px frame at tablet width. The
+gate screens have no `.bt-app`, so `ModalShell` falls back to `document.body`
+-- which is **not positioned**, so an absolute box hangs off the initial
+containing block at the DOCUMENT origin, and page scroll drags the backdrop
+away while the sheet stays put.
+
+```
+sign-in wall, 390x820, before   overlay top -214   bottom quarter unscrimmed
+sign-in wall, 390x820, after    overlay top 0      sheet 517..820, visible
+desktop 1280x900, after         overlay top 0      sheet centred, visible
+```
+
+Desktop hid it entirely, because the gate screens fit there and nothing
+scrolls. **This project shipped this exact bug once before** (-193..627 on an
+820px window) and fixed it by portalling. Portalling was only half of it:
+where there is no frame to sit inside, the overlay must be anchored to the
+VIEWPORT. It reaches every dialog raised from a gate, which is the data
+rescue on onboarding and on the PIN lock -- the screens someone who has lost
+their books actually lands on.
+
+### The catch-22, and who it actually bites
+
+A fix that makes updates reachable can only arrive BY an update. That sounds
+fatal and mostly is not, and the distinction is worth keeping:
+
+- **Existing real users are on the old build in the MAIN SHELL**, because
+  accounts were not mandatory then and they have local books. The old build
+  renders the prompt there, so they are offered it normally.
+- **Whoever lands on a GATE screen of the old build is stuck for good**, and
+  the only way out is a hard reload or clearing site data. That was the owner.
+
+After this deploy nobody can enter that state again.
+
+### The other half, and it is not a bug
+
+**The owner will still not see the landing page at plain `/`.** The pre-paint
+check hides it whenever localStorage holds the ledger key or a `-auth-token`,
+which is what stops an installed PWA opening a marketing page. Their browser
+holds both. **`?landing` is the documented escape and exists for exactly
+this**; it is in the rules above and it is easy to forget when a stale build
+is failing at the same time.
+
+### Two harness faults, both already in this file's catalogue
+
+- A probe **spawned its own `vite preview` and raced it**, so
+  `ERR_CONNECTION_REFUSED` came back as an empty page and read as a rendering
+  failure. It proves the server answers before it measures now. A harness that
+  cannot connect and a page that is broken look identical unless asked.
+- It measured **the frame the sheet appeared in** rather than where it came to
+  rest. `--motion-enter` is 240ms and a sheet ARRIVES, so a correct sheet
+  reported as one sitting off-screen at `top: 820`.
+
+And one that was not a fault but a dead end worth recording: the first probe
+tried to trigger a REAL update by building twice. It never fired --
+`waiting: false`, no update detected, because the browser serves `sw.js` from
+HTTP cache and `registration.update()` honours it without
+`updateViaCache: 'none'`. Forcing the prompt on behind a temporary flag, then
+removing it, tested the thing that could actually fail: where the overlay
+LANDS on a screen with no `.bt-app`.
+
+162 tests, lint still 3 errors and 3 warnings. Live on both origins as
+`index-IiidO7sQ.js`.
