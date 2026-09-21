@@ -311,10 +311,31 @@ export async function savePhoto(file, id) {
   try {
     await tx("readwrite", (store) => store.put(record));
   } catch (err) {
+    /**
+     * SAY WHAT ACTUALLY FAILED.
+     *
+     * This used to answer every failure with "This phone is out of space",
+     * which is a CAUSE rather than a symptom and was asserted from a check
+     * that can match other things. A person told their phone is full deletes
+     * photographs to make room for a photograph, and if the real fault was
+     * the database or the encoder they do it for nothing. That is the same
+     * defect as the sync screen saying "waiting for a connection" while the
+     * server answered 403 on schedule, which cost this project days.
+     *
+     * The size goes in the message because it is diagnostic: `compressImage`
+     * falls back to the ORIGINAL camera file when the encoder returns
+     * something that is not a JPEG, so a figure in megabytes here means
+     * compression was skipped, not that the shelf is full.
+     */
+    const size = bytes >= 1048576
+      ? `${(bytes / 1048576).toFixed(1)}MB`
+      : `${Math.max(1, Math.round(bytes / 1024))}KB`;
+    console.error("[BizTrack] savePhoto failed:", err?.name, err?.message, { bytes, type });
+
     if (quotaError(err)) {
-      throw new Error("This phone is out of space, so the photo was not saved.", { cause: err });
+      throw new Error(`There is no room left on this phone, so the photo (${size}) was not saved.`, { cause: err });
     }
-    throw err;
+    throw new Error(`The photo could not be saved: ${err?.name || "unknown error"}. Nothing was changed.`, { cause: err });
   }
   return { id: photoId, width, height, bytes };
 }

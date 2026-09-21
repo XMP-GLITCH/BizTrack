@@ -78,30 +78,65 @@ export default function ConsentScreen({ styles: S, email, onAccepted, onSignOut 
           it says plainly what is stored, where it goes, and what you can take away.
         </p>
 
-        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", margin: "0 0 18px" }}>
-          <span
-            onClick={() => setAccepted(!accepted)}
+        {/*
+          THIS BOX COULD NOT BE TICKED, and it is the screen every existing
+          account has to pass since LEGAL_VERSION moved. Measured in a browser:
+          a real click at the centre of the visible box left `checked` false,
+          while a synthetic `label.click()` set it true.
+
+          Two faults, both from one wrapper. The whole row was a <label>, and a
+          label forwards every click inside it to its control -- so the box
+          ALSO carried its own `onClick` calling `setAccepted(!accepted)`, and
+          the two handlers fought over the same tap. The same wrapper made the
+          Terms and Privacy buttons toggle consent instead of opening the
+          document, which is a bug this project already found and fixed in
+          AuthScreen and wrote down; this copy never got the fix.
+
+          So: one owner for the change (the input), the label covering only the
+          box and the plain words, and the buttons outside any label.
+        */}
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "0 0 18px" }}>
+          <input
+            id="consent-accept"
+            type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)}
+            style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
+          />
+          {/*
+            The visible box stays 20px; the TAP AREA is 44, which is this
+            project's own minimum and what the 20px target was failing. The
+            negative margin keeps the layout exactly where it was, and the
+            12px it overhangs to the right lands on "I agree to the" -- itself
+            a label for this same control, so the overlap costs nothing.
+          */}
+          <label
+            htmlFor="consent-accept"
             style={{
-              width: 20, height: 20, borderRadius: 6, flexShrink: 0, marginTop: 1,
-              border: accepted ? "1px solid #FAF8F4" : "1px solid rgba(255,255,255,0.35)",
-              background: accepted ? "#FAF8F4" : "transparent",
-              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", flexShrink: 0, display: "flex",
+              alignItems: "center", justifyContent: "center",
+              padding: 12, margin: "-12px 0 -12px -12px",
             }}
           >
-            {accepted && <Check size={14} color="#2C1810" strokeWidth={3} />}
-          </span>
-          <input
-            type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)}
-            style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
-          />
+            <span
+              style={{
+                width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                border: accepted ? "1px solid #FAF8F4" : "1px solid rgba(255,255,255,0.35)",
+                background: accepted ? "#FAF8F4" : "transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              {accepted && <Check size={14} color="#2C1810" strokeWidth={3} />}
+            </span>
+          </label>
           <span style={{ fontSize: 12, lineHeight: 1.5, color: "rgba(255,255,255,0.75)" }}>
-            I agree to the{" "}
+            <label htmlFor="consent-accept" style={{ cursor: "pointer" }}>I agree to the</label>{" "}
             <button type="button" style={link} onClick={() => setDoc("terms")}>Terms of Service</button>
             {" "}and{" "}
             <button type="button" style={link} onClick={() => setDoc("privacy")}>Privacy Policy</button>
-            , and to my records being stored on servers outside Cameroon so they can sync between my devices.
+            <label htmlFor="consent-accept" style={{ cursor: "pointer" }}>
+              , and to my records being stored on servers outside Cameroon so they can sync between my devices.
+            </label>
           </span>
-        </label>
+        </div>
 
         {error && (
           <p style={S.formErrorDark}>{error}</p>

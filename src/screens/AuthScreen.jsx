@@ -526,7 +526,23 @@ export default function AuthScreen({ styles: S }) {
                 style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
               />
 
-              <label htmlFor="accept-legal" style={{ cursor: "pointer", flexShrink: 0, marginTop: 1, display: "block" }}>
+              {/*
+                Measured at 20x20, which is less than half this project's own
+                44px minimum and on the one control that stands between a
+                person and an account. The visible box stays 20; the TAP AREA
+                is 44. The negative margin keeps the row exactly where it was,
+                and the 12px of overhang to the right lands on "I agree to
+                the" -- itself a label for this same control, so overlapping
+                it costs nothing.
+              */}
+              <label
+                htmlFor="accept-legal"
+                style={{
+                  cursor: "pointer", flexShrink: 0, display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  padding: 12, margin: "-12px 0 -12px -12px",
+                }}
+              >
                 <span
                   style={{
                     width: 20, height: 20, borderRadius: 6, display: "flex",

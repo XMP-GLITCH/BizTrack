@@ -97,12 +97,37 @@
         // mean clearing site data or opening a private window on every edit.
         // A page nobody can look at is a page that quietly goes stale.
         if (location.search.indexOf("landing") !== -1) return;
+
+        /*
+          COMING BACK FROM GOOGLE IS NOT A FIRST VISIT, and the storage check
+          alone cannot tell the difference.
+
+          `signInWithOAuth` sets `redirectTo: window.location.origin`, so
+          Google returns the person to `/?code=...`. At that instant
+          supabase-js has not exchanged the code yet, so there is no
+          `-auth-token` in localStorage -- and on a device with no books
+          either, this script concluded "new visitor" and drew the marketing
+          page OVER the app they had just signed into. They then had to tap
+          "I already have an account" to dismiss a page they should never
+          have been shown, which is how the owner found it.
+
+          So the callback itself counts as returning. `code` and `error` are
+          the query the PKCE flow comes back on; the hash covers the implicit
+          flow and the `#reset` that password recovery uses.
+        */
+        var back = /[?&](code|error)=/.test(location.search) ||
+                   /access_token=|type=recovery|reset/.test(location.hash);
+
         try {
-          var been = Object.keys(localStorage).some(function (k) {
+          var been = back || Object.keys(localStorage).some(function (k) {
             return k === "biztrack-storage-v3" || k.slice(-11) === "-auth-token";
           });
           if (been) document.documentElement.className += " bt-returning";
-        } catch (e) {}
+        } catch (e) {
+          // localStorage can throw in a private window. The callback check
+          // above does not touch storage, so it still holds here.
+          if (back) document.documentElement.className += " bt-returning";
+        }
       })();
     </script>
 

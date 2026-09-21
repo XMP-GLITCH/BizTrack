@@ -5186,24 +5186,52 @@ function AboutScreen({ ctx }) {
 
 /* ─── ONBOARDING ───────────────────────────────────────────────────────────── */
 function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
-  const { businesses, replaceBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, askText, ask } = ctx;
+  const { auth, businesses, replaceBusinesses, userName, userEmail, setUserName, setUserEmail, setOnboardingComplete, currency, setCurrency, lowStockThreshold, setLowStockThreshold, showToast, askText, ask } = ctx;
   const [step, setStep] = useState(0);
   const [showImport, setShowImport] = useState(false);
+
+  /**
+   * THE ACCOUNT ALREADY KNOWS THIS, so stop asking for it.
+   *
+   * `userName`, `userEmail` and `onboardingComplete` are DEVICE-LOCAL and
+   * never sync, so signing in on a second phone runs the whole wizard again
+   * -- and it asked for a name and an email belonging to an account that had
+   * just been authenticated with both. The owner's words: "if this email is
+   * indeed in the database, it should have all that information."
+   *
+   * The name is prefilled from whatever the provider gave us, so it is one
+   * tap rather than typing. The EMAIL STEP IS SKIPPED ENTIRELY when there is
+   * an account, and that is the stronger point: the account's address is the
+   * verified one, and a second field invites a DIFFERENT, unverified address
+   * that nothing in the app would ever use. Redundant is the small problem;
+   * contradictory is the real one.
+   *
+   * This does not fix the underlying split -- a device that has never seen
+   * this account still starts at step 0 -- but it stops the wizard asking for
+   * what it is already holding.
+   */
+  const account = auth?.session?.user || null;
+  const accountEmail = auth?.email || "";
+  const accountName = String(
+    account?.user_metadata?.full_name || account?.user_metadata?.name || "",
+  ).trim();
 
   // The standalone check lived here too, duplicating the one inside
   // InstallPrompt (which also covers iOS's own flag). Two copies of a decision
   // about whether to show one card; the card now decides for itself.
-  const initialName = userName !== "Business Owner" ? userName : "";
+  const initialName = userName !== "Business Owner" ? userName : accountName;
   const [name, setName] = useState(initialName);
-  const [email, setEmail] = useState(userEmail || "");
+  const [email, setEmail] = useState(userEmail || accountEmail);
 
   const hasStarted = businesses.length > 0 || initialName.length > 0;
 
   const next = () => {
     if (step === 1 && name.trim()) { setUserName(name.trim()); }
     if (step === 2 && email.trim()) { setUserEmail(email.trim()); }
-    if (step === 3) { setOnboardingComplete(true); } 
-    else { setStep(step + 1); }
+    if (step === 3) { setOnboardingComplete(true); return; }
+    // Signed in: take the verified address and step over the question.
+    if (step === 1 && accountEmail) { setUserEmail(accountEmail); setStep(3); return; }
+    setStep(step + 1);
   };
 
   const handleExport = () => {
