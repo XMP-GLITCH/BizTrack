@@ -7337,3 +7337,64 @@ LANDS on a screen with no `.bt-app`.
 
 162 tests, lint still 3 errors and 3 warnings. Live on both origins as
 `index-IiidO7sQ.js`.
+
+### THE APP UPDATES ITSELF NOW. It used to ask.
+
+The owner's question was the right one: *why doesn't it just refresh?* Because
+`registerType: 'prompt'` means a new worker installs and then **waits for ever**
+-- released only by an explicit "Update now" or by every tab closing at once.
+With the button unreachable behind a gate, that is a permanent stall.
+
+It is `registerType: 'autoUpdate'`, and **the setting alone is inert**: with
+`injectManifest`, `src/sw.js` must call `self.skipWaiting()` and
+`self.clients.claim()` itself or the worker still waits. Both are there now,
+with the reasoning beside them.
+
+**The reload is load-bearing, not cosmetic.** `cleanupOutdatedCaches()` deletes
+the previous precache the instant the new worker activates, so a page left
+running on the old build holds hashed chunk URLs that no longer resolve -- the
+lazily imported chart is the one that 404s. Reloading at once is the SHORTER
+window of danger, not the longer one. Do not add a "finish what you are doing"
+delay without solving that first.
+
+`onNeedReload` replaces vite-plugin-pwa's bare `window.location.reload()` with
+a 700ms "Updating BizTrack" sheet, because **an app that silently restarts
+reads as a crash** on a mid-range Android and this audience is at a stall when
+it happens. Long enough to read four words, far too short to reach a lazy
+chunk.
+
+`updateProgress` and `isUpdating` are declared ABOVE `useRegisterSW`, and that
+is required rather than tidy: the callback is stored once on the first render,
+so a setter declared further down sits in its temporal dead zone when the
+closure is built. Same fault as `checkUpdates` reaching a `showToast` declared
+150 lines later, which never threw only because nothing called it during the
+first render.
+
+**The trade, taken knowingly:** an unsubmitted form is lost when an update
+lands. Recorded sales are not, because every mutation reaches localStorage
+first.
+
+Verified by building twice and watching the swap, because a reload loop would
+be the worst thing this change could do:
+
+```
+v1   index-Hf9tuR6g   loads 1
+     installing -> never observed WAITING, so skipWaiting works
+v2   index-Ba0feVbs   loads 2 -> 3, exactly one reload
+     6s later         loads 3, settled, NO LOOP
+```
+
+**A marker comment cannot prove a build changed.** Appending one to `main.jsx`
+is stripped by minification, so the output was byte-identical, the hash never
+moved, and the worker was correct that there was no update -- two runs
+reported "swapped=false" for a build that had never been made. A side effect
+on `window` survives. Checking the JS chunk hash after changing only CSS was
+the same error one layer up: the CSS filename moves and the JS hash does not.
+
+Live `sw.js` is served `public, max-age=0, must-revalidate`, so nothing blocks
+the check in production. `vite preview` sends `no-cache`, so neither locally.
+
+**The one-time catch:** this fix can only arrive by the mechanism it repairs.
+Anyone already stranded on a gate screen of an older build still needs a
+manual unstick once -- close every tab and the installed app, or unregister
+the worker. After that nobody can enter the state again.
