@@ -7523,3 +7523,57 @@ that never ran, because the last button says **"Enter Dashboard"** and the
 click matcher did not name it.
 
 Live on both origins as `index-DrKToDy9.js`.
+
+### A FULL PHONE NO LONGER MEANS NO PHOTO
+
+The photo failure, reproduced against the real module rather than guessed at
+a third time. `vite dev` serves the source unminified, so `savePhoto` can be
+called directly and the real error object read instead of the sentence the
+app chose for it.
+
+**What it is not.** On a normal device the pipeline is sound: an 11.6MB
+camera file compresses to 242KB of real JPEG, saves, and twelve more save
+after it. Compression is not being skipped and the database is not broken.
+
+**What it is.** With the origin's quota squeezed below one photo, the write
+raises a genuine `QuotaExceededError` (code 22), `quotaError()` matches it,
+and **the sentence was TRUE** -- the phone really had no room. Which left the
+owner with an accurate message and no way forward, on the feature both real
+users asked for first.
+
+So a quota failure now **retries once at 640px and q0.55** -- a quarter of the
+pixels, far smaller than the quality step alone suggests:
+
+```
+normal    11.6MB -> 242KB, saved, twelve more saved
+120KB     242KB refused -> retried -> SAVED at 47KB
+4KB       refused twice -> honest message, still classified as quota
+```
+
+A softer picture is a real cost and the honest trade: a soft photo of the
+product beats no photo, and the field prints the saved size, so the smaller
+figure is on screen rather than hidden. **Only for quota** -- retrying a
+broken encoder or a missing object store fails twice and takes twice as long
+to say so.
+
+When even that will not fit, the message stops being a dead end and says how
+much room BIZTRACK is holding, because "out of space" alone does not tell
+someone whether to delete photos in this app or elsewhere on the phone.
+`photoStorageEstimate` was written for exactly this and had no caller.
+
+**The lint tripwire earned its keep**, going 3 errors to 4 on
+`preserve-caught-error`: the throw named a pick between the two failures as
+its cause. The rule was right -- this attempt is what failed, and naming the
+earlier error misreports which. Nothing was lost, since the first is a quota
+error by construction and already in the console line.
+
+**`pruneOrphans` STILL HAS NO CALLER, and that is deliberate.** Photos
+orphaned by a restore or a deleted business are never reclaimed. Wiring it to
+run automatically is the dangerous version: on a device whose pull has not
+finished, the keep-set is EMPTY and it would delete every photo the owner
+has, which is this project's oldest failure mode wearing a new name. Running
+it only after a restore would be safe, and would also make "Replace my books"
+a sentence that no longer covers what happens -- so it needs the copy changed
+with it. Left alone on purpose, not overlooked.
+
+Live on both origins as `index-BoMOoaGC.js`.
