@@ -7470,3 +7470,56 @@ dismissed it. Both reported "does not toggle" about a control that was never
 touched, and the second nearly had me rewrite a screen that was working.
 A probe that does not report WHAT IT HIT cannot tell a broken control from a
 missed one.
+
+### SETUP IS A PROPERTY OF THE ACCOUNT, NOT OF THE PHONE
+
+The owner, after the previous pass: *"signing in on a new device still takes
+you through the onboarding process."* Correct -- that pass only stopped the
+wizard ASKING for what the account held. It still ran.
+
+The marker is **`setup_done_at` on USER METADATA**, and the choice of home is
+the whole design:
+
+- It rides on the **session**, so the gate can read it on the first render
+  with no request. A `profiles` row arrives AFTER the gate, so the wizard
+  would flash and then withdraw from under someone already typing in it.
+- It is there **offline**, because supabase-js restores the session from
+  localStorage. An account is required; the network is not.
+- It needs **no migration**. `profiles.display_name` exists but defaults to
+  'Business Owner' and only carries a real name when signup metadata had one
+  -- which **Google sign-in never does** -- so it cannot tell "set up" from
+  "never named".
+
+Same mechanism `accepted_legal_version` already uses, read the same way.
+
+**The identity is READ THROUGH, not copied into the store.** Adopting it into
+local state needs an effect writing state on mount, which is the
+`set-state-in-effect` the lint tripwire counts. Local still WINS where it is
+set: a name typed on this phone is the one this phone shows.
+
+**ONE WRITER, and the probe is what forced it.** The first cut had the wizard
+record it AND an effect backfill it; two PUTs fired for one event. The effect
+is the only writer now and covers both cases with one line -- the wizard
+finishing flips the flag, and a device that finished it long ago already has
+it set. **That second case is what makes this reach anyone who exists today**,
+since no account carries `setup_done_at` yet.
+
+```
+empty localStorage + session, account set up   -> app, "Good morning, Mami Joy"
+empty localStorage + session, new account      -> "Welcome to BizTrack"
+finishing the wizard                           -> exactly one PUT /auth/v1/user
+```
+
+The second row is what makes the first mean anything: a fix that skipped
+onboarding for everybody would pass the first check and be worse than the bug.
+
+**The feature tour stays device-local, deliberately.** It teaches the
+interface; someone who already has an account does not need that again.
+
+Two faults of my own, both already catalogued here. The derived block
+referenced `userEmail`, declared six lines BELOW it -- its temporal dead zone,
+throwing on every render. And a probe reported "no request fired" for a step
+that never ran, because the last button says **"Enter Dashboard"** and the
+click matcher did not name it.
+
+Live on both origins as `index-DrKToDy9.js`.
