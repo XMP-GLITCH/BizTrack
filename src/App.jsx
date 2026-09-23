@@ -12,7 +12,7 @@ import { isBackendConfigured } from "./backend/supabase.js";
 import { useAuth } from "./backend/useAuth.js";
 import { useSync } from "./backend/useSync.js";
 import { useClaim } from "./backend/useClaim.js";
-import { signOut, deleteAccount, rememberSignedIn } from "./backend/auth.js";
+import { signOut, deleteAccount, rememberSignedIn, recordSetupComplete } from "./backend/auth.js";
 import AuthScreen from "./screens/AuthScreen.jsx";
 import LegalScreen from "./screens/LegalScreen.jsx";
 // Recharts is the biggest dependency after supabase-js and is needed on one
@@ -984,6 +984,7 @@ export default function BizTrack() {
 
   const onboardingComplete = useStore(s => s.onboardingComplete);
   const setOnboardingComplete = useStore(s => s.setOnboardingComplete);
+
   const hasSeenGuide = useStore(s => s.hasSeenGuide);
   const setHasSeenGuide = useStore(s => s.setHasSeenGuide);
   const isPinEnabled = useStore(s => s.isPinEnabled);
@@ -991,6 +992,64 @@ export default function BizTrack() {
 
   const userEmail = useStore(s => s.userEmail);
   const setUserEmail = useStore(s => s.setUserEmail);
+
+  /**
+   * SETUP IS A PROPERTY OF THE ACCOUNT, NOT OF THE PHONE.
+   *
+   * `onboardingComplete` lives in localStorage and never syncs, so signing in
+   * on a second device ran the whole wizard again -- asking for a name and an
+   * email belonging to the account that had just been authenticated with both.
+   *
+   * The account's own answer rides on the SESSION (see `recordSetupComplete`),
+   * so it is readable on this first render and with no request, which is what
+   * lets the gate below decide immediately instead of flashing the wizard and
+   * then withdrawing it. It is also there offline, because supabase-js
+   * restores the session from localStorage.
+   *
+   * READ-THROUGH rather than copied into the store. Adopting these into local
+   * state would need an effect writing state on mount, which is the
+   * `set-state-in-effect` the lint tripwire counts, and this project keeps
+   * that count still on purpose. Local still WINS where it is set: a name
+   * typed on this phone is the one this phone shows.
+   */
+  const accountMeta = auth.session?.user?.user_metadata || null;
+  const accountSetUp = Boolean(accountMeta?.setup_done_at);
+  const setupDone = onboardingComplete || accountSetUp;
+  const namedLocally = userName && userName !== "Business Owner";
+  const resolvedUserName = namedLocally
+    ? userName
+    : (String(accountMeta?.display_name || accountMeta?.full_name || accountMeta?.name || "").trim() || userName);
+  // The account's address is the verified one, so it stands in wherever this
+  // device has not been told otherwise.
+  const resolvedUserEmail = userEmail || auth.email || "";
+
+  /**
+   * THE ONE PLACE THAT TELLS THE ACCOUNT SETUP IS DONE.
+   *
+   * It covers both cases with the same line, which is why it is not two:
+   * the wizard finishing flips `onboardingComplete`, and a device that
+   * finished it long ago already has it set. Either way this device knows
+   * something the account does not, and says so once.
+   *
+   * That second case is what makes the fix reach anyone who exists today.
+   * Nobody who signed up before now carries `setup_done_at`, so without it
+   * the owner would test on a second phone and still meet the wizard they
+   * reported.
+   *
+   * A ref rather than the flag: `updateUser` refreshes the session, so this
+   * re-runs with new identities on the way through, and the ref is what stops
+   * a second write. Failure is silent on purpose -- it buys the NEXT device a
+   * shorter path and nothing on this one depends on it.
+   */
+  const backfilled = useRef(false);
+  useEffect(() => {
+    if (!auth.session || accountSetUp || !onboardingComplete) return;
+    if (backfilled.current) return;
+    backfilled.current = true;
+    recordSetupComplete({ name: namedLocally ? userName : "" }).catch((err) => {
+      console.warn("[BizTrack] Could not record setup on the account:", err?.message);
+    });
+  }, [auth.session, accountSetUp, onboardingComplete, namedLocally, userName]);
   const userAvatar = useStore(s => s.userAvatar);
   const setUserAvatar = useStore(s => s.setUserAvatar);
   const hashedPin = useStore(s => s.hashedPin);
@@ -1088,7 +1147,7 @@ export default function BizTrack() {
   const guardedReplaceBusinesses = (...a) => { if (!canWrite) return explainReadOnly(); return replaceBusinesses(...a); };
   const guardedUpdateInvoice = (...a) => { if (!canWrite) return explainReadOnly(); return updateInvoice(...a); };
 
-  const ctx = { businesses, analyticsConsent, chooseAnalytics, replaceBusinesses: guardedReplaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, openAnalysis, analysisFrom, bizTab, setBizTab, modal, setModal: guardedSetModal, canWrite, explainReadOnly, showToast, ask, askText, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, photoItemId, setPhotoItemId, receiptSale, setReceiptSale, invoiceId, setInvoiceId, addInvoice, updateInvoice: guardedUpdateInvoice, deleteInvoice, updateSale, deleteSale, deleteInventoryItem, setItemPhoto, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName, setUserName, onboardingComplete, setOnboardingComplete, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const ctx = { businesses, analyticsConsent, chooseAnalytics, replaceBusinesses: guardedReplaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, openAnalysis, analysisFrom, bizTab, setBizTab, modal, setModal: guardedSetModal, canWrite, explainReadOnly, showToast, ask, askText, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, photoItemId, setPhotoItemId, receiptSale, setReceiptSale, invoiceId, setInvoiceId, addInvoice, updateInvoice: guardedUpdateInvoice, deleteInvoice, updateSale, deleteSale, deleteInventoryItem, setItemPhoto, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName: resolvedUserName, setUserName, onboardingComplete, setOnboardingComplete, setupDone, accountSetUp, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail: resolvedUserEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
 
     const [isUnlocked, setIsUnlocked] = useState(false);
 
@@ -1184,7 +1243,11 @@ export default function BizTrack() {
     );
   }
 
-  if (!onboardingComplete) return withOverlays(<Onboarding ctx={ctx} deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />);
+  // `setupDone`, not `onboardingComplete`: an account that has been set up on
+  // any device is set up on this one. The FEATURE TOUR below deliberately
+  // stays on the local flag -- it teaches the interface, and someone who
+  // already has an account does not need the interface explained again.
+  if (!setupDone) return withOverlays(<Onboarding ctx={ctx} deferredPrompt={deferredPrompt} setDeferredPrompt={setDeferredPrompt} />);
   if (isPinEnabled && !isUnlocked) return withOverlays(<PinLock ctx={ctx} onUnlock={() => setIsUnlocked(true)} />);
 
   // Analytics consent. Nothing is collected until this is answered, so the
@@ -5228,7 +5291,14 @@ function Onboarding({ ctx, deferredPrompt, setDeferredPrompt }) {
   const next = () => {
     if (step === 1 && name.trim()) { setUserName(name.trim()); }
     if (step === 2 && email.trim()) { setUserEmail(email.trim()); }
-    if (step === 3) { setOnboardingComplete(true); return; }
+    if (step === 3) {
+      // Recording this on the ACCOUNT is not done here. Flipping the flag is
+      // what the effect in App watches, and one owner for that write is the
+      // point -- doing it in both places sent two PUTs for one event, which
+      // is how two copies of a job start drifting.
+      setOnboardingComplete(true);
+      return;
+    }
     // Signed in: take the verified address and step over the question.
     if (step === 1 && accountEmail) { setUserEmail(accountEmail); setStep(3); return; }
     setStep(step + 1);

@@ -174,6 +174,46 @@ export async function recordLegalAcceptance(version) {
   });
 }
 
+/**
+ * Remember, ON THE ACCOUNT, that this person has already set the app up.
+ *
+ * `onboardingComplete`, `userName` and `userEmail` are DEVICE-LOCAL and never
+ * sync, so signing in on a second phone ran the whole setup wizard again --
+ * and asked for a name and an email belonging to the account it had just
+ * authenticated with. The owner's words: "if this email is indeed in the
+ * database, it should have all that information."
+ *
+ * USER METADATA rather than `profiles`, for three reasons:
+ *
+ *  - It rides on the SESSION, so it is readable the moment `auth.ready` is
+ *    true and with no extra request. The onboarding gate renders immediately;
+ *    a `profiles` row would arrive after it, so the wizard would flash and
+ *    then vanish out from under whoever had started typing in it.
+ *  - It is there OFFLINE. supabase-js restores the session from localStorage,
+ *    so a signed-in user on no signal still skips the wizard. This app's
+ *    founding rule is that an account is required and the network is not.
+ *  - It needs no migration. `profiles.display_name` exists, but it defaults to
+ *    'Business Owner' and only carries a real name when signup metadata had
+ *    one -- which Google sign-in never does -- so it cannot tell "set up" from
+ *    "never named". A new column would be honest and would also be a seventh
+ *    SQL step in a project that has just spent a week applying six.
+ *
+ * This is the same mechanism `accepted_legal_version` above already uses, and
+ * the gate reads it the same way.
+ */
+export async function recordSetupComplete({ name } = {}) {
+  if (!isBackendConfigured) return { error: null };
+  const clean = String(name || "").trim();
+  return supabase.auth.updateUser({
+    data: {
+      setup_done_at: new Date().toISOString(),
+      // Written only when there is something to write: a blank must not
+      // overwrite a name the account already carries from another device.
+      ...(clean ? { display_name: clean } : {}),
+    },
+  });
+}
+
 export async function signOut() {
   if (!isBackendConfigured) return { error: null };
   return supabase.auth.signOut();
