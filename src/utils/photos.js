@@ -293,51 +293,90 @@ function quotaError(err) {
  * Silently dropping a photo the owner watched themselves take is the worst
  * possible behaviour: they would find out weeks later, with no way back.
  */
-export async function savePhoto(file, id) {
-  const { blob, width, height, bytes, type } = await compressImage(file);
-  const photoId = id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
-  const record = {
-    id: photoId,
-    blob,
-    type,
-    width,
-    height,
-    bytes,
-    createdAt: new Date().toISOString(),
-    // Set once the photo reaches Supabase Storage. Until then this device holds
-    // the only copy, which the backup copy has to know about.
-    remotePath: null,
-  };
-  try {
-    await tx("readwrite", (store) => store.put(record));
-  } catch (err) {
-    /**
-     * SAY WHAT ACTUALLY FAILED.
-     *
-     * This used to answer every failure with "This phone is out of space",
-     * which is a CAUSE rather than a symptom and was asserted from a check
-     * that can match other things. A person told their phone is full deletes
-     * photographs to make room for a photograph, and if the real fault was
-     * the database or the encoder they do it for nothing. That is the same
-     * defect as the sync screen saying "waiting for a connection" while the
-     * server answered 403 on schedule, which cost this project days.
-     *
-     * The size goes in the message because it is diagnostic: `compressImage`
-     * falls back to the ORIGINAL camera file when the encoder returns
-     * something that is not a JPEG, so a figure in megabytes here means
-     * compression was skipped, not that the shelf is full.
-     */
-    const size = bytes >= 1048576
-      ? `${(bytes / 1048576).toFixed(1)}MB`
-      : `${Math.max(1, Math.round(bytes / 1024))}KB`;
-    console.error("[BizTrack] savePhoto failed:", err?.name, err?.message, { bytes, type });
+/** A fallback encode for a phone that has run out of room. Half the long edge
+ *  is a QUARTER of the pixels, so this is far smaller than the quality step
+ *  alone suggests. Still legible as a product photo on a 48px row and when
+ *  opened. */
+const TIGHT_EDGE = 640;
+const TIGHT_QUALITY = 0.55;
 
-    if (quotaError(err)) {
-      throw new Error(`There is no room left on this phone, so the photo (${size}) was not saved.`, { cause: err });
+const readable = (n) => (n >= 1048576
+  ? `${(n / 1048576).toFixed(1)}MB`
+  : `${Math.max(1, Math.round(n / 1024))}KB`);
+
+export async function savePhoto(file, id) {
+  const photoId = id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  const write = async (shot) => {
+    await tx("readwrite", (store) => store.put({
+      id: photoId,
+      blob: shot.blob,
+      type: shot.type,
+      width: shot.width,
+      height: shot.height,
+      bytes: shot.bytes,
+      createdAt: new Date().toISOString(),
+      // Set once the photo reaches Supabase Storage. Until then this device
+      // holds the only copy, which the backup copy has to know about.
+      remotePath: null,
+    }));
+    return { id: photoId, width: shot.width, height: shot.height, bytes: shot.bytes };
+  };
+
+  let shot = await compressImage(file);
+  try {
+    return await write(shot);
+  } catch (err) {
+    console.error("[BizTrack] savePhoto failed:", err?.name, err?.message, { bytes: shot.bytes, type: shot.type });
+
+    /**
+     * OUT OF ROOM IS NOT THE END OF THE ATTEMPT.
+     *
+     * Verified rather than assumed: with the origin's quota squeezed below one
+     * photo, the write raises a real `QuotaExceededError` (code 22), so the
+     * classifier is right and the sentence was true -- the phone really had no
+     * room. Which left the owner with a message and no way forward.
+     *
+     * So try once more at a quarter of the pixels. A phone that cannot take
+     * 240KB will often take 60, and this audience's devices are cheap and
+     * usually close to full. The result is a softer picture, which is a real
+     * cost and the honest trade: a slightly soft photo of the product beats no
+     * photo, and the field prints the saved size, so the smaller figure is on
+     * screen rather than hidden.
+     *
+     * Only for a quota failure. Retrying a broken encoder or a missing object
+     * store would just fail twice and take twice as long to say so.
+     */
+    if (!quotaError(err)) {
+      throw new Error(`The photo could not be saved: ${err?.name || "unknown error"}. Nothing was changed.`, { cause: err });
     }
-    throw new Error(`The photo could not be saved: ${err?.name || "unknown error"}. Nothing was changed.`, { cause: err });
+
+    try {
+      shot = await compressImage(file, { maxEdge: TIGHT_EDGE, quality: TIGHT_QUALITY });
+      return await write(shot);
+    } catch (second) {
+      /**
+       * Still no. Now say how much of the room BIZTRACK is using, because
+       * "out of space" on its own is a dead end: it does not tell the owner
+       * whether to delete photos in this app or somewhere else on the phone.
+       * `photoStorageEstimate` was written for exactly this and had no caller.
+       */
+      let held = "";
+      try {
+        const est = await photoStorageEstimate();
+        if (est.count > 0) held = ` BizTrack is holding ${est.count} photo${est.count === 1 ? "" : "s"} (${readable(est.bytes)}).`;
+      } catch { /* the figure is a courtesy; its absence must not replace the real error */ }
+
+      // `second`, not a pick between the two: this attempt is what failed, and
+      // the lint rule is right that naming the earlier error as the cause
+      // misreports which one it is. Nothing is lost -- the first is a quota
+      // error by construction, since anything else threw above, and it is
+      // already in the console line.
+      throw new Error(
+        `There is no room left on this phone, so the photo was not saved.${held} Free some space and try again.`,
+        { cause: second },
+      );
+    }
   }
-  return { id: photoId, width, height, bytes };
 }
 
 export async function getPhoto(id) {
