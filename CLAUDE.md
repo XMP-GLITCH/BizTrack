@@ -731,7 +731,7 @@ their books. Therefore:
 ## Verifying changes
 
 ```sh
-npm test              # 100 unit + integration tests (node:test, no extra deps)
+npm test              # 162 unit + integration tests (node:test, no extra deps)
 npm run lint          # 3 pre-existing errors, 3 warnings, see below
 npm run build
 ./supabase/tests/run.sh        # 35 RLS tests, needs local Postgres
@@ -746,6 +746,23 @@ supabase/analytics-queries.sql  # which screens, which features, what breaks
 ```
 
 Run `rls-check.sql` after ANY schema change.
+
+**THE MEASUREMENT HARNESS IS NOT IN THIS REPO, AND THIS FILE TELLS YOU TO RUN IT
+ANYWAY.** Every `scratchpad/*.mjs` named below -- `sweep`, `clip`, `measure`,
+`census`, `rhythm`, `density`, `desk`, `slop`, `dialogs`, `walk`,
+`demoscreens`, `marketing`, `seedMarket`, `fakeSession`, `payload` -- was
+written in a session's working directory and never committed. All fifteen are
+gone. So "re-run that script whenever the screens it photographs change" points
+at a file no clone contains, and the numbers those scripts produced are now
+claims nobody can re-check: the 60-combination sweep, the alignment columns, the
+contrast ratios, the 129 demo zones.
+
+The one survivor is `tools/marketing/seed.mjs`, recovered on 21 September and
+committed precisely because of this. **Anything rebuilt goes in `tools/`, not
+`scratchpad/`.** They drive Chrome over CDP from node's native `WebSocket` with
+no extra dependency, so rebuilding one is an afternoon rather than a project --
+but until it is rebuilt, treat every measured figure in this file as history
+rather than as something you can verify today.
 
 **Known lint state:** 3 errors and 3 warnings, all pre-existing React hygiene in
 the update-check and PIN paths (`set-state-in-effect`, `purity`,

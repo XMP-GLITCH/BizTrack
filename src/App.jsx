@@ -19,11 +19,8 @@ import LegalScreen from "./screens/LegalScreen.jsx";
 // screen. Splitting it out keeps it off the first paint, which on a low-end
 // Android over metered data is the load that actually costs the user money.
 const ProfitChart = lazy(() => import("./screens/ProfitChart.jsx"));
-// Its own lazy module, but Recharts is already a shared vendor chunk, so the
-// ring costs the bundle nothing beyond its own few lines.
 // Not lazy and not Recharts: a proportional stacked bar is flexbox, so the
 // "profit by business" section no longer pulls a chart library at all.
-// `ShareRing.jsx` is still on disk while the owner compares the two.
 import ShareBar from "./screens/ShareBar.jsx";
 import ClaimScreen from "./screens/ClaimScreen.jsx";
 import ConsentScreen from "./screens/ConsentScreen.jsx";
@@ -5117,8 +5114,8 @@ function AboutScreen({ ctx }) {
   const features = [
     { icon: <Store size={20} />, title: "Multi-Business Management", desc: "Track and manage multiple business ventures from a single unified dashboard." },
     { icon: <Package size={20} />, title: "Smart Inventory Tracking", desc: "Real-time stock monitoring with intelligent low-stock alerts and cost-per-unit analysis." },
-    { icon: <TrendingUp size={20} />, title: "Performance Analytics", desc: "Visualize your growth with profit rankings, revenue charts, and detailed business insights." },
-    { icon: <Lock size={20} />, title: "Yours, and portable", desc: "Records are stored on your device and, if you sign in, backed up to your account so you can reach them from another phone. Export everything as CSV whenever you want." },
+    { icon: <TrendingUp size={20} />, title: "Performance Analytics", desc: "See what sells, what earns, and what is sitting on the shelf, with profit by week and by month." },
+    { icon: <Lock size={20} />, title: "Yours, and portable", desc: "Records are stored on your device and backed up to your account, so you can reach them from another phone. Export everything as CSV whenever you want." },
     { icon: <Cloud size={20} />, title: "Local-First / PWA Ready", desc: "Install BizTrack on your home screen for a native experience that works offline." },
     { icon: <Sparkles size={20} />, title: "Custom Sales Entry", desc: "Flexible recording for both inventoried products and custom one-off services." }
   ];
