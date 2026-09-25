@@ -542,6 +542,28 @@ Do not "fix" these without discussing:
   reachable in one tap from the bar at the bottom of every screen, which is not
   a shortcut, it is a second door, and this project spent a whole pass removing
   those. The business rows on Analytics are the way in.
+- **HOME IS ALL TIME, AND THE LABEL SAYS SO.** Changed 25 September at the
+  owner's request, and it reverses the 15 September fix, so read that log entry
+  with this beside it. **What that fix was actually about was the LABEL, not
+  the period**: the card said "Total Profit This Month" and computed all-time,
+  a figure that did not mean what it said, which in a books app is a trust bug
+  rather than a copy nit. All time is a fine thing to show. Showing it under
+  the wrong name is not, so the card reads `Profit · All time` and the feature
+  tour step pointing at it was reworded in the same change.
+  It also settled a disagreement already on that screen: **every business ROW
+  on Home has always run `calcBizStats(biz)` with no bounds**, so the list was
+  lifetime while the card above it said September, and nothing said so.
+  **The `quietMonth` note went with the month**, deliberately. It existed
+  because an empty PERIOD over a full book reads as lost data, which is this
+  project's v1.5.3 history; all-time cannot produce that confusion, because a
+  zero there means there are genuinely no sales.
+  **`bizNote` keeps its month**, and that is not an oversight: it is the only
+  recency signal left on the screen, and it reports a SALES COUNT, so it still
+  obeys its own rule of never restating the figure on the row.
+  **Analytics keeps the month and now genuinely owns it** -- this month against
+  last, the weekly chart, the trend. Until this change both screens led with
+  `Profit · September`, so the split this file claimed existed only here. Home
+  answers "where do I stand"; Analytics answers "which way is it going".
 - **The business Overview tab stays QUICK, and that is what lets the deep page
   be long.** Overview is what you land on and answers "how is this going" in one
   screen; the deep page is on the other tab, so 2,600px of scroll is a choice

@@ -1638,14 +1638,26 @@ function HomeScreen({ ctx }) {
   const wash = isDarkMode ? 0.20 : 0.12;
   const rule = isDarkMode ? 0.50 : 0.42;
 
+  // HOME IS ALL TIME. Owner's call, 25 September, and it settles a
+  // disagreement that was already on this screen: every business ROW below
+  // runs `calcBizStats(biz)` with no bounds, so the list has always been
+  // lifetime while the card above it said September. One screen, two periods,
+  // with nothing saying so.
+  //
+  // The 15 September fix this reverses was never about the PERIOD. The defect
+  // was that the card was LABELLED "Total Profit This Month" and computed
+  // all-time -- a number that did not mean what it said, which in a books app
+  // is a trust bug. All time is fine; the label moves with it, and that is the
+  // rule being kept rather than broken.
+  //
+  // Analytics keeps the month, and now genuinely owns it: this month against
+  // last, the weekly chart, the trend. Home answers "where do I stand", that
+  // screen answers "which way is it going". Until today both led with
+  // "Profit · September" and the split existed only in this file.
+  //
+  // `monthStart` stays because `bizNote` still needs it -- see below.
   const monthStart = startOfMonth();
-  const month = calcPortfolioStats(businesses, { since: monthStart });
   const allTime = calcPortfolioStats(businesses);
-  const monthName = new Date().toLocaleDateString("en-US", { month: "long" });
-  // A quiet month must not read as lost data. That failure mode is this app's
-  // own history -- see the v1.5.3 rescue work -- so when the period is empty
-  // and the books are not, say so and show the total that is not zero.
-  const quietMonth = month.revenue === 0 && allTime.revenue > 0;
   // `qty > 0`, and it was missing here. THREE places in this app decide what
   // "low stock" means and this was the only one that did not exclude an empty
   // shelf: `bizNote` says `qty > 0 && qty <= threshold`, the Overview strip
@@ -1678,31 +1690,32 @@ function HomeScreen({ ctx }) {
 
       {/* SUMMARY CARD */}
       <div id="home-summary" style={S.summaryCard}>
-        <p style={S.summaryLabel}>Profit · {monthName}</p>
-        <DisplayAmount minor={month.profit} style={S.summaryAmount} />
-        {quietMonth ? (
-          <p style={S.summaryNote}>
-            No sales recorded in {monthName} yet. Your books are safe:
-            {" "}<strong style={{ fontWeight: 600 }}>{fmt(allTime.profit)}</strong> profit all time.
-          </p>
-        ) : (
-          <div style={S.summaryRow} className="bt-summaryrow">
-            <div>
-              <p style={S.summarySubLabel}>Revenue</p>
-              <p style={S.summarySubVal}>{fmt(month.revenue)}</p>
-            </div>
-            <div style={S.summaryDivider} />
-            <div>
-              <p style={S.summarySubLabel}>Businesses</p>
-              <p style={S.summarySubVal}>{businesses.length} active</p>
-            </div>
-            <div style={S.summaryDivider} />
-            <div>
-              <p style={S.summarySubLabel}>Margin</p>
-              <p style={S.summarySubVal}>{month.margin}%</p>
-            </div>
+        {/* The period is NAMED, which is the part that is not negotiable. An
+            unlabelled figure on this card is how "Total Profit This Month"
+            came to mean all-time for months without anyone noticing. */}
+        <p style={S.summaryLabel}>Profit · All time</p>
+        <DisplayAmount minor={allTime.profit} style={S.summaryAmount} />
+        {/* The quiet-month note is gone with the month. It existed because an
+            empty PERIOD over a full book reads as lost data, which is this
+            app's own v1.5.3 history -- but all-time cannot produce that
+            confusion: if this figure is zero there are genuinely no sales,
+            and saying so plainly is correct rather than alarming. */}
+        <div style={S.summaryRow} className="bt-summaryrow">
+          <div>
+            <p style={S.summarySubLabel}>Revenue</p>
+            <p style={S.summarySubVal}>{fmt(allTime.revenue)}</p>
           </div>
-        )}
+          <div style={S.summaryDivider} />
+          <div>
+            <p style={S.summarySubLabel}>Businesses</p>
+            <p style={S.summarySubVal}>{businesses.length} active</p>
+          </div>
+          <div style={S.summaryDivider} />
+          <div>
+            <p style={S.summarySubLabel}>Margin</p>
+            <p style={S.summarySubVal}>{allTime.margin}%</p>
+          </div>
+        </div>
       </div>
 
       {/* The upgrade completed but the numbers didn't reconcile. Say so plainly
@@ -5732,7 +5745,7 @@ function FeatureGuide({ ctx }) {
   // spent two days moving away from, still being taught to every new user on
   // their first screen. A ranking of one is also simply not there to see.
   const steps = [
-    { target: "home-summary", text: "This is what you have made this month.", pos: "bottom" },
+    { target: "home-summary", text: "This is everything you have made so far.", pos: "bottom" },
     { target: "add-biz-btn", text: "Running more than one thing? Add it here and they stay separate.", pos: "top" },
     { target: "nav-analytics", text: "This is where you find what sells, what earns, and what is stuck on the shelf.", pos: "top" },
   ];
