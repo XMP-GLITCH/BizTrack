@@ -1187,13 +1187,17 @@ export default function BizTrack() {
     setModal(name);
   };
 
+  // Declared ABOVE `ctx` because `ctx` carries its setter: the passcode
+  // setup marks the session unlocked, since someone who has just typed the
+  // PIN twice should not be thrown at the lock screen for doing so.
+  const [isUnlocked, setIsUnlocked] = useState(false);
+
   /** The two writes that do not go through a sheet. */
   const guardedReplaceBusinesses = (...a) => { if (!canWrite) return explainReadOnly(); return replaceBusinesses(...a); };
   const guardedUpdateInvoice = (...a) => { if (!canWrite) return explainReadOnly(); return updateInvoice(...a); };
 
-  const ctx = { businesses, analyticsConsent, chooseAnalytics, replaceBusinesses: guardedReplaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, openAnalysis, analysisFrom, bizTab, setBizTab, modal, setModal: guardedSetModal, canWrite, explainReadOnly, showToast, ask, askText, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, photoItemId, setPhotoItemId, receiptSale, setReceiptSale, invoiceId, setInvoiceId, addInvoice, updateInvoice: guardedUpdateInvoice, deleteInvoice, updateSale, deleteSale, deleteInventoryItem, setItemPhoto, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName: resolvedUserName, setUserName, onboardingComplete, setOnboardingComplete, setupDone, accountSetUp, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail: resolvedUserEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing };
+  const ctx = { businesses, analyticsConsent, chooseAnalytics, replaceBusinesses: guardedReplaceBusinesses, migrationIssues, auth, sync, signOutOfAccount, screen, setScreen, activeBiz, activeBizId, openBiz, openAnalysis, analysisFrom, bizTab, setBizTab, modal, setModal: guardedSetModal, canWrite, explainReadOnly, showToast, ask, askText, addBusiness, deleteBusiness, addInventoryItem, restockInventoryItem, restockItemId, setRestockItemId, photoItemId, setPhotoItemId, receiptSale, setReceiptSale, invoiceId, setInvoiceId, addInvoice, updateInvoice: guardedUpdateInvoice, deleteInvoice, updateSale, deleteSale, deleteInventoryItem, setItemPhoto, addSale, currency, setCurrency, isDarkMode, setIsDarkMode, lowStockThreshold, setLowStockThreshold, userName: resolvedUserName, setUserName, onboardingComplete, setOnboardingComplete, setupDone, accountSetUp, hasSeenGuide, setHasSeenGuide, isPinEnabled, hashedPin, setHashedPin, hashedRecoveryKey, setHashedRecoveryKey, loginAttempts, setLoginAttempts, lockoutUntil, setLockoutUntil, userEmail: resolvedUserEmail, setUserEmail, userAvatar, setUserAvatar, setIsPinEnabled, checkUpdates, updateProgress, checkRescue, isRescuing, setIsUnlocked };
 
-    const [isUnlocked, setIsUnlocked] = useState(false);
 
   // Safe to early-return from here on: every hook above has already run.
   if (isStateCorrupt || migrationFailed) {
@@ -4615,8 +4619,31 @@ function AddSaleModal({ ctx }) {
   );
 }
 
+/**
+ * Turning the passcode on.
+ *
+ * NOTHING IS ENABLED UNTIL THE RECOVERY KEY HAS BEEN SEEN, and that is the
+ * whole fix. This used to call `setIsPinEnabled(true)` on the CONFIRM step, one
+ * render before it showed the key -- and enabling the PIN trips the gate in
+ * `BizTrack`, which replaces the entire tree with `PinLock`. So this modal was
+ * unmounted before step 3 could paint: the key was generated, hashed, stored,
+ * and never shown to anybody, and the owner landed on a lock screen offering
+ * "Use your Recovery Key" as a way back in to a key they had never seen.
+ *
+ * That is this project's oldest lesson in a new place -- a gate screen is not a
+ * different screen, it is a different TREE -- and it is why every write now
+ * happens in one place, on Finish, after the key is on screen.
+ *
+ * It also fixes the quieter half: the sheet can be dragged down, dismissed or
+ * escaped at step 3, and before this that left a live PIN with an unseen key.
+ * Now closing early simply leaves the passcode off.
+ *
+ * `setIsUnlocked(true)` is not a convenience. Someone who has just typed the
+ * PIN twice has proved they know it, and locking them out of the app they are
+ * standing in is the app arguing with itself.
+ */
 function PinSetupModal({ ctx }) {
-  const { setModal, setHashedPin, setHashedRecoveryKey, setIsPinEnabled, showToast } = ctx;
+  const { setModal, setHashedPin, setHashedRecoveryKey, setIsPinEnabled, setIsUnlocked, showToast } = ctx;
   const [error, setError] = useState(null);
   const [step, setStep] = useState(1); // 1: set, 2: confirm, 3: recovery
   const [pin, setPin] = useState("");
@@ -4629,19 +4656,19 @@ function PinSetupModal({ ctx }) {
       setStep(2);
     } else if (step === 2) {
       if (pin !== confirmPin) return setError("Those two passcodes do not match.");
-      const key = genRecoveryKey();
-      setRecoveryKey(key);
-      
-      const hash = await hashPin(pin);
-      const keyHash = await hashPin(key.replace("-", ""));
-      
-      setHashedPin(hash);
-      setHashedRecoveryKey(keyHash);
-      setIsPinEnabled(true);
+      // Generate and SHOW. Nothing is written to the store here, because
+      // writing `isPinEnabled` is what used to destroy this modal.
+      setRecoveryKey(genRecoveryKey());
       setStep(3);
     } else {
+      const hash = await hashPin(pin);
+      const keyHash = await hashPin(recoveryKey.replace("-", ""));
+      setHashedPin(hash);
+      setHashedRecoveryKey(keyHash);
+      setIsUnlocked(true);       // before the gate can see it
+      setIsPinEnabled(true);
       setModal(null);
-      showToast("Security enabled!");
+      showToast("Passcode on. Keep that recovery key somewhere safe.");
     }
   };
 

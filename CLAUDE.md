@@ -675,6 +675,25 @@ Do not "fix" these without discussing:
   mark can sit on it. `bizTint` returns rgba on purpose, because a flat light
   mode tint is wrong the moment the page behind it is dark.
 
+- **NOTHING ABOUT THE PASSCODE IS WRITTEN UNTIL THE RECOVERY KEY IS ON
+  SCREEN.** `PinSetupModal` used to call `setIsPinEnabled(true)` on the CONFIRM
+  step, one render before it showed the key -- and enabling the PIN trips the
+  gate in `BizTrack`, which replaces the whole tree with `PinLock`. So the
+  modal was unmounted before step 3 could paint: **the key was generated,
+  hashed, stored and never shown to anyone**, and the owner landed on a lock
+  screen offering "Use your Recovery Key" as the way back in to a key they had
+  never seen. Reproduced by driving it, 25 September; the fix is verified the
+  same way.
+  This is the oldest lesson in this file in a new place: **a gate screen is not
+  a different screen, it is a different TREE.** Every write now happens in one
+  place, on Finish, after the key is visible.
+  It fixes the quieter half too. The sheet can be dragged down, escaped or
+  dismissed at step 3, and before this that left a live PIN with an unseen key;
+  closing early now simply leaves the passcode off.
+  **`setIsUnlocked(true)` goes with it, and is not a convenience.** Someone who
+  has just typed the PIN twice has proved they know it, and throwing them at
+  the lock screen for turning the lock on is the app arguing with itself. Its
+  `useState` is declared ABOVE `ctx` because `ctx` carries the setter.
 - **THE PIN SCREEN OFFERS THREE WAYS BACK IN, IN THE ORDER YOU TRY THEM.**
   Email a code, Recovery Key, look for older backups -- same 14px size, with
   hierarchy from weight and colour alone: accent/600, primary/500,
