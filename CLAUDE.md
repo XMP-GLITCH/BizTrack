@@ -675,6 +675,28 @@ Do not "fix" these without discussing:
   mark can sit on it. `bizTint` returns rgba on purpose, because a flat light
   mode tint is wrong the moment the page behind it is dark.
 
+- **THE PIN SCREEN OFFERS THREE WAYS BACK IN, IN THE ORDER YOU TRY THEM.**
+  Email a code, Recovery Key, look for older backups -- same 14px size, with
+  hierarchy from weight and colour alone: accent/600, primary/500,
+  secondary/400. It was SIX things, and the hierarchy was upside down: a
+  bordered "no recovery email" card, an accent line naming the address in
+  full, a fainter line, a rule, the emergency rescue as a filled AMBER PILL --
+  the loudest control on the screen for the last thing anyone should try --
+  and "App stuck? Force Refresh" as loud as the path that works.
+  **"Force Refresh" is gone and must not return.** The app has updated itself
+  since 21 September, so the state it offered to fix no longer happens, and
+  its `reload(true)` was dead anyway: browsers have ignored that argument for
+  years.
+  **The warning card went because it pointed at controls that are visible** --
+  "use your Recovery Key or Data Rescue below" is what the two buttons below it
+  already said -- and it can barely fire now, since `ctx.userEmail` falls back
+  to the account address.
+  **The version line STAYS.** This is a screen you cannot navigate away from,
+  so if someone is stuck here the build is the first thing support asks for and
+  About sits behind the very lock they cannot pass. Which makes `VERSION` being
+  wrong a live defect rather than untidiness.
+  Data rescue stays too, last and quiet: it is the last thing to try, not the
+  least important.
 - **Rescue is reachable from three places and that is correct.** The crash
   screen, onboarding, and the PIN lock are all places where Settings cannot be
   reached at all. They are contextual, not duplicated. Do not consolidate them.

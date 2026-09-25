@@ -89,7 +89,7 @@ export function books() {
 }
 
 /** The exact envelope zustand/persist writes, so the app rehydrates rather than migrates. */
-export function storageBlob(businesses) {
+export function storageBlob(businesses, opts = {}) {
   return JSON.stringify({
     state: {
       businesses,
@@ -102,6 +102,11 @@ export function storageBlob(businesses) {
       onboardingComplete: true,
       hasSeenGuide: true,          // the tour is a separate screen; not under test here
       joinDate: day(90),
+      // The PIN lock is a GATE screen: it replaces the whole tree, so it cannot
+      // be reached by navigating. It is seeded instead. The hash never has to
+      // be right -- nothing here types a PIN, the screen just has to render.
+      ...(opts.locked ? { isPinEnabled: true, hashedPin: "harness-not-a-real-hash",
+                          hashedRecoveryKey: "harness-not-a-real-hash" } : {}),
     },
     version: 1,
   });

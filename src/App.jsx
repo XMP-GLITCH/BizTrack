@@ -5745,33 +5745,53 @@ function PinLock({ ctx, onUnlock }) {
           <button style={{ ...S.numKey, fontSize: 14 }} onClick={() => setInput("")} disabled={isLockedOut}>Clear</button>
         </div>
 
-        <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 8, width: "100%", alignItems: "center" }}>
-          {(!userEmail || !validateEmail(userEmail)) ? (
-             <div style={{ background: "rgba(193, 127, 90, 0.05)", padding: "12px 16px", borderRadius: 12, border: "1px solid rgba(193, 127, 90, 0.1)", marginBottom: 8, width: "100%" }}>
-                <p style={{ fontSize: 11, color: "var(--warning)", margin: 0, fontWeight: 700, textAlign: "center" }}>⚠️ No recovery email configured</p>
-                <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "4px 0 0", textAlign: "center" }}>Please use your Recovery Key or Data Rescue below.</p>
-             </div>
-          ) : (
-            <button 
-              style={{ ...S.textBtn, color: "var(--accent-color)", padding: 10 }} 
+        {/* THREE WAYS BACK IN, AND THEY ARE ORDERED BY WHAT YOU TRY FIRST.
+            This was six things: a bordered warning card, an accent line naming
+            the address in full, a fainter line, a rule, an amber PILL, and a
+            "Force Refresh". The hierarchy was upside down -- the emergency
+            last resort was the loudest control on the screen, and an obsolete
+            one was as loud as the path that actually works.
+
+            The warning card went because it pointed at controls that are
+            visible anyway: "use your Recovery Key or Data Rescue below" is
+            what the two buttons below it already say.
+
+            "App stuck? Force Refresh" went because the app has updated itself
+            since 21 September -- `registerType: 'autoUpdate'` with
+            skipWaiting and clients.claim -- so the state it offered to fix is
+            the one that no longer happens. Its `reload(true)` was dead too:
+            browsers have ignored that argument for years.
+
+            DATA RESCUE STAYS. The PIN lock is one of three deliberate doors to
+            it, chosen because Settings cannot be reached from here. It is last
+            and quiet because it is the last thing to try, not because it
+            matters less. */}
+        <div style={{ marginTop: 32, display: "flex", flexDirection: "column", gap: 4, width: "100%", alignItems: "center" }}>
+          {userEmail && validateEmail(userEmail) && (
+            /* `S.textBtn` is ALREADY `--accent-text` at 600, which is the right
+               answer for the first way back and the wrong one for all three:
+               the first version of this set an accent colour on this button
+               and left the other two to inherit, so the ladder below was three
+               identical lines. The size is constant; the hierarchy is weight
+               and colour, which is the lever this app uses everywhere else. */
+            <button
+              style={S.textBtn}
               onClick={handleEmailReset}
               disabled={isSending}
             >
-              {isSending ? "Sending code..." : `Forgot PIN? Reset via ${userEmail}`}
+              {isSending ? "Sending code..." : "Email me a reset code"}
             </button>
           )}
-          
-          <button 
-            style={{ ...S.textBtn, fontSize: 11, opacity: 0.6 }} 
+
+          <button
+            style={{ ...S.textBtn, color: "var(--text-primary)", fontWeight: 500 }}
             onClick={() => setRecoveryMode('key')}
           >
-            Or use 8-digit Recovery Key
+            Use your Recovery Key
           </button>
-          
-          <div style={{ height: 1, background: "var(--border-color)", width: "60%", margin: "8px 0" }} />
-          
-          <button 
-            style={{ ...S.textBtn, fontSize: 12, color: "var(--warning)", fontWeight: 700, background: "rgba(139, 105, 20, 0.1)", padding: "10px 20px", borderRadius: 99 }} 
+
+          <button
+            style={{ ...S.textBtn, color: "var(--text-secondary)", fontWeight: 400 }}
             onClick={async () => {
               if (await ask({
                 title: "Search for older backups?",
@@ -5782,16 +5802,13 @@ function PinLock({ ctx, onUnlock }) {
               }
             }}
           >
-            {ctx.isRescuing ? "Scanning device..." : "Try Emergency Data Rescue"}
+            {ctx.isRescuing ? "Scanning device..." : "Look for older backups"}
           </button>
 
-          <button 
-            style={{ ...S.textBtn, opacity: 0.8, marginTop: 12 }} 
-            onClick={() => window.location.reload(true)}
-          >
-            App stuck? Force Refresh
-          </button>
-          <p style={{ fontSize: 11, opacity: 0.55, marginTop: 6 }}>BizTrack {VERSION}</p>
+          {/* Kept, because this is a screen you cannot navigate away from: if
+              someone is stuck here the version is the first thing support asks
+              for, and About is behind the very lock they cannot pass. */}
+          <p style={{ fontSize: 11, opacity: 0.55, marginTop: 14 }}>BizTrack {VERSION}</p>
         </div>
       </div>
     </div>

@@ -111,6 +111,17 @@ const main = async () => {
   const shots = [];
 
   try {
+    // Declared FIRST. A const referenced above its declaration is in its
+    // temporal dead zone, which is how the --locked path threw on its first run
+    // -- the same shape as checkUpdates reaching a showToast 150 lines below it.
+    const shoot = async (name) => {
+      const png = await cdp.send("Page.captureScreenshot", { format: "png" });
+      const file = `${OUT}/${name}.png`;
+      writeFileSync(file, Buffer.from(png.data, "base64"));
+      shots.push(file);
+      console.log("  shot     " + file);
+    };
+
     await cdp.send("Emulation.setDeviceMetricsOverride",
       { width: 390, height: 820, deviceScaleFactor: 2, mobile: true });
 
@@ -127,7 +138,9 @@ const main = async () => {
     console.log(`  cleaned  ${evicted.workers} service worker(s), caches and storage`);
 
     // 3. seed
-    const blob = storageBlob(books());
+    // `node tools/harness/shoot.mjs out --locked` photographs the PIN lock.
+    const locked = process.argv.includes("--locked");
+    const blob = storageBlob(books(), { locked });
     await cdp.evaluate(`(() => {
       localStorage.setItem(${JSON.stringify("biztrack-storage-v3")}, ${JSON.stringify(blob)});
       localStorage.setItem(${JSON.stringify("sb-" + REF + "-auth-token")}, ${JSON.stringify(session())});
@@ -144,11 +157,20 @@ const main = async () => {
         const app = document.querySelector('.bt-app');
         const screen = document.querySelector('.bt-screen');
         return { app: !!app, screen: !!screen,
+                 pin: /Enter PIN to unlock|Locked out for/.test(document.body?.innerText || ''),
+                 splash: !!document.getElementById('splash-screen'),
                  heading: document.querySelector('h1')?.textContent?.trim() || null,
                  body: (document.body?.innerText || '').slice(0, 80) };
       })()`);
-      if (ready.app && ready.screen) break;
+      if (ready.splash) { await sleep(125); continue; }   // still fading
+      if (locked && ready.pin) break;
+      if (!locked && ready.app && ready.screen) break;
       await sleep(125);
+    }
+    if (locked) {
+      console.log("  pin      lock screen up");
+      await shoot("pinlock");
+      return;
     }
     if (!ready?.app) {
       console.log("  NOT THE APP. body begins: " + JSON.stringify(ready?.body));
@@ -169,13 +191,6 @@ const main = async () => {
     })()`);
     console.log("  card     " + JSON.stringify(card));
 
-    const shoot = async (name) => {
-      const png = await cdp.send("Page.captureScreenshot", { format: "png" });
-      const file = `${OUT}/${name}.png`;
-      writeFileSync(file, Buffer.from(png.data, "base64"));
-      shots.push(file);
-      console.log("  shot     " + file);
-    };
     // The same measurement on HOME, because `.bt-has-fab` pads 148 to clear the
     // Sale button (top at 136) and the install card is taller than that. If it
     // overlaps here too, this is not "Analytics is missing a class", it is the
