@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Archive, ArrowLeft, Award, BarChart2, Camera, Check, CheckCircle2, ChevronDown, ChevronRight, Cloud, Coins, DollarSign, Download, Home, ImagePlus, Info, Lock, LogOut, Moon, Package, Plus, PlusSquare, RefreshCw, ScrollText, Settings, Share, Shield, Smartphone, Sparkles, Store, Sun, Trash2, TrendingUp, Upload, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, Award, BarChart2, Check, CheckCircle2, ChevronDown, ChevronRight, Cloud, Coins, DollarSign, Download, Home, ImagePlus, Info, Lock, LogOut, Moon, Package, Plus, PlusSquare, RefreshCw, ScrollText, Settings, Share, Shield, Smartphone, Sparkles, Store, Sun, Trash2, TrendingUp, Upload, X } from "lucide-react";
 import { useStore, selectBusinesses, selectInventory, readSnapshot, STORAGE_KEY } from "./store/useStore";
 import { formatMoney, formatMoneyParts, toMinor, toMajor, marginPercent, CURRENCIES } from "./domain/money.js";
 import { calcBizStats, calcPortfolioStats, portfolioFinding, inventoryHealth, stockValue, STOCK, startOfMonth, weeklyProfit, monthlyProfit, itemPerformance, saleRevenue, saleCost, saleProfit, saleDiscount, getStatus, liveSales } from "./domain/stats.js";
@@ -3675,10 +3675,28 @@ function Photo({ photoId, size = 44, radius = 12, alt = "" }) {
 /**
  * Take or choose a product photo.
  *
- * `capture="environment"` is what makes Android open the camera rather than the
- * file browser, which is the whole point: this is used standing in front of the
- * stock. It is only a hint, and a device without a camera falls back to the
- * picker on its own, so there is no branch to write.
+ * **THERE IS NO `capture` ATTRIBUTE, AND THAT IS THE WHOLE POINT.** It used to
+ * carry `capture="environment"` with a comment calling it "only a hint" that a
+ * device would fall back from. That is wrong, and it was wrong on the phones
+ * this app is actually used on: on Android Chrome `capture` is not a hint, it
+ * opens the camera directly and there is **no route to the gallery at all**.
+ * So an owner who had already photographed their stock, or who was restocking
+ * from pictures a supplier sent on WhatsApp, could not use any of them. Every
+ * product photo had to be taken again, in the moment, or not at all.
+ *
+ * Without it the OS draws its own chooser -- Camera, Gallery, Files -- which
+ * is the correct place for that question: the app cannot enumerate someone's
+ * photo library, so unlike the category list this genuinely is the OS's to
+ * own. "The app picks, not the OS" is about lists of the app's OWN data and
+ * does not reach here.
+ *
+ * **The camera is one tap deeper, not gone**, and that is the trade. The old
+ * reasoning -- that this is used standing in front of the stock -- is real and
+ * still holds; it is simply not worth buying with the gallery, because a tap
+ * is a tap and a photo you cannot reach is a photo you cannot use.
+ *
+ * One input serves both shapes below, so the form and the photo sheet cannot
+ * drift apart on this.
  *
  * The size is shown after compression because this audience pays for every
  * megabyte, and a number is the only honest way to say what a photo will cost
@@ -3715,7 +3733,6 @@ function PhotoField({ photoId, onChange, busyLabel = "Compressing...", solo = fa
         ref={input}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={pick}
         style={{ display: "none" }}
       />
@@ -3765,7 +3782,7 @@ function PhotoField({ photoId, onChange, busyLabel = "Compressing...", solo = fa
           <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
             <div style={{ display: "flex", gap: 8 }}>
               <button type="button" style={S.photoBtn} disabled={busy} onClick={() => input.current?.click()}>
-                {busy ? <RefreshCw size={15} className="spin" /> : photoId ? <Camera size={15} /> : <ImagePlus size={15} />}
+                {busy ? <RefreshCw size={15} className="spin" /> : <ImagePlus size={15} />}
                 {busy ? busyLabel : photoId ? "Change" : "Add photo"}
               </button>
               {photoId && !busy && (

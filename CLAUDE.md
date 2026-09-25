@@ -284,6 +284,14 @@ Do not "fix" these without discussing:
   quiet text button when there is something to remove. `PhotoField` keeps its
   thumbnail-and-buttons shape for the FORM, where it is one field among five and
   must not lead the screen; `solo` is the other one.
+  **It takes photos from the GALLERY as well, since 25 September, and the way
+  it does that is by having no `capture` attribute.** Do not put one back for
+  the stall use-case: on Android Chrome `capture` is not the hint the old
+  comment called it, it opens the camera with NO route to the library, so an
+  owner could not use a photo they had already taken or one a supplier sent on
+  WhatsApp. The full argument is beside `PhotoField` in App.jsx, where anyone
+  editing the input will read it; this line exists so it is findable from here
+  too. The camera is one tap deeper in the OS chooser, not gone.
 - **The finding ladder is ordered by what costs money soonest.** oversold,
   losing, runningOut, thinMargin, concentrated, steady. A ladder's bug is never
   the top rung, it is a rung firing when a more urgent one should have, so
