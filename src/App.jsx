@@ -367,6 +367,7 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt, raised, inline = fal
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(true);
   const [dismissed, setDismissed] = useState(false);
+  const card = useRef(null);
 
   useEffect(() => {
     const isStandAloneMatch = window.matchMedia('(display-mode: standalone)').matches;
@@ -377,6 +378,52 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt, raised, inline = fal
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isIosDevice);
   }, []);
+
+  // Is this card FLOATING over a screen, as opposed to the `inline` copy that
+  // sits in the flow of onboarding and pushes nothing aside?
+  const floating = !inline && !isStandalone && !dismissed && (Boolean(deferredPrompt) || isIOS);
+
+  /**
+   * THE CARD RESERVES ITS OWN ROOM, and it has to, because nothing else knew
+   * how tall it is.
+   *
+   * The floating ladder gave every hovering thing a position and no screen a
+   * matching clearance: `.bt-has-fab` pads 148 to clear the SALE BUTTON, whose
+   * top is at 136, and the install card then sits at that same 148 and rises
+   * another 113px above it. Measured at 390x820, that hid the last four
+   * elements on Home -- including a shop's profit figure -- and the last SIX on
+   * Analytics, which is two entire business rows out of three.
+   *
+   * A fixed number is what went stale the first time, and it would again: this
+   * card drops its explanatory sentence in landscape and moves to the side of
+   * the window above 1024, so its height and its offset are both conditional.
+   * So it measures itself and publishes ONE value -- how much room the foot of
+   * a scroller needs for the card to cover nothing -- and the padding rules
+   * take `max()` of that and whatever they already spend. When the card is not
+   * showing the property is removed, the fallback is 0px, and every screen
+   * keeps exactly the padding it had.
+   *
+   * `raised` is a dependency because navigating between a screen with the Sale
+   * button and one without MOVES the card, and a ResizeObserver only reports a
+   * change of size.
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = card.current;
+    const clear = () => root.style.removeProperty("--bt-install-room");
+    if (!floating || !el) { clear(); return clear; }
+
+    const apply = () => {
+      const top = el.getBoundingClientRect().top;
+      // 12px is the rung this app's floating ladder uses between every layer.
+      root.style.setProperty("--bt-install-room", Math.max(0, Math.round(window.innerHeight - top + 12)) + "px");
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    window.addEventListener("resize", apply);
+    return () => { ro.disconnect(); window.removeEventListener("resize", apply); clear(); };
+  }, [floating, raised]);
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
@@ -391,6 +438,7 @@ function InstallPrompt({ deferredPrompt, setDeferredPrompt, raised, inline = fal
 
   return (
     <div
+      ref={card}
       className={inline ? "" : "bt-install" + (raised ? " bt-raised" : "")}
       style={inline
         ? { position: "static", background: "rgba(255,255,255,0.05)", borderRadius: 16, padding: "14px 16px", border: "1px solid rgba(255,255,255,0.12)", display: "flex", gap: 12, alignItems: "flex-start", textAlign: "left" }

@@ -20,6 +20,11 @@
         && r.right > c.left && r.left < c.right;
   }).map((el) => (el.innerText || '').trim().slice(0, 34));
   return {
+    // The value InstallPrompt publishes. A probe that waits only for the CARD
+    // measures padding before this has landed, and then reports the overlap the
+    // fix removes -- which is how this file produced 293px/0 and 148px/4 for the
+    // same build on consecutive runs.
+    room: getComputedStyle(document.documentElement).getPropertyValue('--bt-install-room').trim(),
     card: { top: Math.round(c.top), bottom: Math.round(c.bottom) },
     screenClasses: sc.className,
     paddingBottom: getComputedStyle(sc).paddingBottom,

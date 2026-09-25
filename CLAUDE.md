@@ -606,6 +606,29 @@ Do not "fix" these without discussing:
   putting "0 left" and "-2 left" on screen for a count of eleven to turn out to
   be a count of seven. An empty shelf is not a low shelf, and the badge on the
   row obeys the same rule -- `Out` at zero, `Low` below the threshold.
+- **THE INSTALL CARD RESERVES ITS OWN ROOM, through `--bt-install-room`, and
+  the `max()` in those six CSS rules is load-bearing.** The floating ladder
+  gave every hovering thing a POSITION and no screen a matching CLEARANCE:
+  `.bt-has-fab` spends 148 to clear the Sale button, whose top is at 136, and
+  the install card then sits at that same 148 and rises another 113px above it.
+  Nothing ever accounted for its HEIGHT. Measured at 390x820 on 25 September:
+  it hid the last FOUR elements on Home, one of them a shop's profit figure,
+  and the last SIX on Analytics, which is two of three business rows -- so two
+  shops were unreachable during exactly the first-run state where the card
+  shows.
+  **The value is measured and published by `InstallPrompt` itself**, not typed,
+  because a constant is what went stale the first time and would again: the
+  card drops its explanatory sentence below 520px tall and moves beside the
+  rail above 1024, so its height AND its offset are both conditional. Proven
+  rather than argued -- portrait reserves 245px and landscape 151px from the
+  same code. When the card is not showing the property is removed, the
+  fallback is `0px`, and every screen keeps the padding it always had.
+  **`.bt-screen` must stay ABOVE `.bt-has-fab` in the base block.** Both match
+  a screen that has the Sale button and their specificity is equal, so source
+  order is the only thing giving `.bt-has-fab` the last word.
+  `raised` is a dependency of that effect because navigating between a screen
+  with the Sale button and one without MOVES the card, and a ResizeObserver
+  only reports a change of size.
 - **A low-stock strip anchors its mark to the FIRST LINE, not to the block.**
   `alignItems: "flex-start"`. Those lines carry a shop name, so they wrap at
   320 and at 390, and a glyph centred on a two-line row sits half a line below

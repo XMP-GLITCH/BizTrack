@@ -498,10 +498,23 @@ button:not(:disabled):active,
 .bt-herorow { column-gap: 16px; row-gap: 8px; }
 .bt-summaryrow > div, .bt-herorow > div { min-width: 0; }
 
-/* The record-sale button floats over the last rows of the screens it appears
-   on, so those two screens get clearance under their final row. Every other
-   screen keeps the plain bottom-nav padding. */
-.bt-has-fab { padding-bottom: calc(148px + env(safe-area-inset-bottom)) !important; }
+/* THE FLOATING LAYER RESERVES ITS OWN ROOM, and until 25 September nothing
+   did. Every rule below spends what it takes to clear the BAR and the SALE
+   BUTTON; none of them knew the install card's HEIGHT, so the card -- 113px
+   tall, sitting at the top of the ladder -- covered whatever was under it.
+   Measured at 390x820: the last four elements on Home, including a shop's
+   profit figure, and the last SIX on Analytics, which is two business rows.
+
+   `--bt-install-room` is published by `InstallPrompt` itself and says how much
+   room the foot of a scroller needs for the card to cover nothing. Every rule
+   takes max() of that and what it already spends, so when the card is absent
+   the property is removed, the fallback is 0px, and nothing moves.
+
+   These two rules MUST stay in this order. Both match a screen that has the
+   Sale button, their specificity is equal, and source order is the only thing
+   giving `.bt-has-fab` the last word. */
+.bt-screen { padding-bottom: max(calc(80px + env(safe-area-inset-bottom)), var(--bt-install-room, 0px)) !important; }
+.bt-has-fab { padding-bottom: max(calc(148px + env(safe-area-inset-bottom)), var(--bt-install-room, 0px)) !important; }
 
 /* ── >= 700px ─────────────────────────────────────────────────────────────── */
 @media (min-width: 700px) {
@@ -602,7 +615,7 @@ button:not(:disabled):active,
      padding. */
   .bt-screen {
     padding-top: 8px !important;
-    padding-bottom: 48px !important;
+    padding-bottom: max(48px, var(--bt-install-room, 0px)) !important;
     padding-inline: max(0px, calc((100% - 880px) / 2)) !important;
   }
   /* Running prose wants a narrower measure than a dashboard does. */
@@ -615,7 +628,7 @@ button:not(:disabled):active,
   /* No bottom bar here, so the button sits in the corner of the window and the
      clearance shrinks back to ordinary padding. */
   .bt-fab { bottom: 28px !important; right: 24px !important; }
-  .bt-has-fab { padding-bottom: 104px !important; }
+  .bt-has-fab { padding-bottom: max(104px, var(--bt-install-room, 0px)) !important; }
 
   /* The business hero spreads revenue / profit / margin with space-between, so
      at full width the margin figure ends up underneath the decorative orb in
@@ -645,7 +658,7 @@ button:not(:disabled):active,
     width: var(--nav-pill-w) !important;
   }
   .bt-navlabel { font-size: 12px !important; }
-  .bt-screen { padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important; }
+  .bt-screen { padding-bottom: max(calc(60px + env(safe-area-inset-bottom)), var(--bt-install-room, 0px)) !important; }
 
   /* The install card is 200px of a 390px-tall landscape phone. The heading and
      the button are the part that does the work; the sentence explaining what
@@ -654,7 +667,7 @@ button:not(:disabled):active,
   .bt-install.bt-raised { bottom: calc(118px + env(safe-area-inset-bottom)) !important; }
   .bt-toast { bottom: calc(118px + env(safe-area-inset-bottom)) !important; }
   .bt-fab { bottom: calc(66px + env(safe-area-inset-bottom)) !important; height: 44px !important; }
-  .bt-has-fab { padding-bottom: calc(118px + env(safe-area-inset-bottom)) !important; }
+  .bt-has-fab { padding-bottom: max(calc(118px + env(safe-area-inset-bottom)), var(--bt-install-room, 0px)) !important; }
   .bt-install-desc { display: none !important; }
 }
 

@@ -82,8 +82,13 @@ async function measureOverlap(cdp) {
   let last = null;
   for (let i = 0; i < 40; i++) {
     last = await cdp.evaluate(probe);
-    if (last && last.installCard !== false) return last;
+    if (last && last.installCard !== false && last.room) return last;
     await sleep(100);
+  }
+  if (last && last.installCard !== false) {
+    // The card is up but published nothing. That is a real failure of the fix,
+    // and it must not be reported as an overlap finding.
+    return { ...last, note: "card rendered but --bt-install-room was never set" };
   }
   return { installCard: false, note: "card never rendered within 4s -- absence, not clearance" };
 }
@@ -223,6 +228,19 @@ const main = async () => {
     console.log("  overlap  " + JSON.stringify(overlap));
     writeFileSync(`${OUT}/overlap.json`, JSON.stringify(overlap, null, 2));
     await shoot("analytics-bottom");
+
+    // LANDSCAPE is the case a constant gets wrong. Below 520px tall the card
+    // drops its explanatory sentence, so it is shorter AND sits at a different
+    // offset -- which is the whole argument for publishing a measured value
+    // instead of typing a number into six CSS rules.
+    for (const [w, h, label] of [[740, 400, "landscape"], [360, 640, "small"]]) {
+      await cdp.send("Emulation.setDeviceMetricsOverride",
+        { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+      await sleep(400);
+      const o = await measureOverlap(cdp);
+      console.log(`  ${label.padEnd(9)} ${w}x${h} pad ${o.paddingBottom} covered ${o.coveredCount} ${JSON.stringify(o.covered || [])}`);
+      await shoot("analytics-" + label);
+    }
   } finally {
     cdp.close();
     chrome.proc.kill();
