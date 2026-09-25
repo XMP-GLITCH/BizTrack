@@ -28,7 +28,23 @@
       push content UNDER the notch instead of clear of it.
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#2C1810" />
+    <!-- THEME-COLOR IS THE STATUS BAR, and it must equal --bg-primary.
+         It was #2C1810, the ink, which matches NEITHER theme: the app is
+         #FAF8F4 in light and #1A0E0A in dark, so iOS painted a dark brown band
+         above a cream app and it read as a border across the top. It is also
+         not static -- this app has its own theme switch, not
+         prefers-color-scheme, so the pre-paint script below sets it for the
+         stored theme and the effect in App.jsx keeps it in step. -->
+    <meta name="theme-color" content="#FAF8F4" />
+
+    <!-- iOS needs to be told this is an app. Without `capable` an older iOS
+         opens it in Safari chrome rather than standalone.
+         `apple-mobile-web-app-status-bar-style` is deliberately NOT set: it is
+         read once at launch and cannot follow a runtime theme switch, so any
+         value here is right in one mode and wrong in the other. Decide it with
+         a device in hand. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BizTrack" />
     <title>BizTrack: Inventory, Sales &amp; Profit</title>
 
     <!--
@@ -64,7 +80,13 @@
         if (storage) {
           try {
             const isDark = JSON.parse(storage).state.isDarkMode;
-            if (isDark) document.documentElement.classList.add('dark');
+            if (isDark) {
+              document.documentElement.classList.add('dark');
+              // Before the first paint, or the status bar flashes the light
+              // colour on every launch of a dark-mode install.
+              var m = document.querySelector('meta[name="theme-color"]');
+              if (m) m.setAttribute('content', '#1A0E0A');
+            }
           } catch(e) {}
         }
       })();

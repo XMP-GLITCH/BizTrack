@@ -675,6 +675,36 @@ Do not "fix" these without discussing:
   mark can sit on it. `bizTint` returns rgba on purpose, because a flat light
   mode tint is wrong the moment the page behind it is dark.
 
+- **`theme-color` IS THE STATUS BAR, SO IT MUST EQUAL `--bg-primary` AND
+  FOLLOW THE THEME.** It was a static `#2C1810` -- the INK -- which matches
+  neither theme: the app is `#FAF8F4` light and `#1A0E0A` dark. On iOS that
+  paints a dark brown band above a cream app, which is what "a weird blurry
+  border at the top" was. The manifest's `theme_color` AND `background_color`
+  were the same wrong value, and `background_color` is what Android paints
+  behind the launch splash, while `index.html`'s own splash is `#FAF8F4` -- so
+  a cold start flashed brown, then cream.
+  This app has its OWN theme switch rather than `prefers-color-scheme`, so a
+  `<meta media="...">` pair cannot do it: the pre-paint script sets it for the
+  stored theme and the effect beside the `dark` class keeps it in step. Both
+  are needed -- without the first, every cold start of a dark install flashes a
+  light status bar. Asserted three ways in `tools/harness/themecolor.mjs`,
+  including at DOMContentLoaded, before React has rendered.
+  **`apple-mobile-web-app-status-bar-style` is deliberately NOT set.** It is
+  read once at launch and cannot follow a runtime theme switch, so any value is
+  right in one mode and wrong in the other. That one needs a device.
+- **THE SAFE AREA IS MEASURABLE HERE.** `Emulation.setSafeAreaInsetsOverride`
+  exists, so `tools/harness/shoot.mjs --ios` reproduces an iPhone's 59px top
+  and 34px bottom insets rather than guessing. Checked with it: the bottom nav
+  is flush (`gapBelowNav: 0`), pads 34 for the home indicator and is 112 tall,
+  and the screen pads 59 at the top. That part was already right.
+- **THE SUMMARY CARD'S META ROW IS TWO CHIPS, NOT THREE.** Revenue and Margin,
+  which is exactly what the business hero has always carried. "Businesses ·
+  N active" restated the list directly beneath it, and once this card went to
+  ALL TIME the figure grew long enough to BREAK THE ROW ON EVERY PHONE THIS
+  AUDIENCE OWNS: measured, it wrapped at 320, 360, 375, 390 and 393 and only
+  fitted from 412, leaving a divider pointing at nothing and Margin alone on a
+  second line. Two chips fit at 320, so the wrap rule is back to being the
+  320-only safety net it was written as.
 - **NOTHING ABOUT THE PASSCODE IS WRITTEN UNTIL THE RECOVERY KEY IS ON
   SCREEN.** `PinSetupModal` used to call `setIsPinEnabled(true)` on the CONFIRM
   step, one render before it showed the key -- and enabling the PIN trips the

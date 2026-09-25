@@ -866,6 +866,13 @@ export default function BizTrack() {
     } else {
       document.documentElement.classList.remove('dark');
     }
+    // The status bar is part of the app on a phone. `theme-color` is what iOS
+    // and Android paint it with, so it has to track --bg-primary rather than
+    // sit on one static value -- which is what put a dark band above a cream
+    // app. The literals are the two --bg-primary values; they are duplicated
+    // here because a meta tag cannot read a CSS custom property.
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', isDarkMode ? '#1A0E0A' : '#FAF8F4');
   }, [isDarkMode]);
 
   const [analysisFrom, setAnalysisFrom] = useState("business");
@@ -1752,15 +1759,20 @@ function HomeScreen({ ctx }) {
             app's own v1.5.3 history -- but all-time cannot produce that
             confusion: if this figure is zero there are genuinely no sales,
             and saying so plainly is correct rather than alarming. */}
+        {/* REVENUE and MARGIN, which is exactly what the business hero's meta
+            row has always carried. The third chip, "Businesses · N active",
+            restated the list directly beneath it -- and once this card went to
+            ALL TIME the figure got long enough to break the row on every phone
+            this audience owns: measured, it wrapped at 320, 360, 375, 390 and
+            393, and only fitted from 412. Wrapped, it left a divider pointing
+            at nothing and MARGIN alone on a second line.
+
+            Two chips fit at 320 with room to spare, so the wrap rule below is
+            back to being the 320-only safety net it was written as. */}
         <div style={S.summaryRow} className="bt-summaryrow">
           <div>
             <p style={S.summarySubLabel}>Revenue</p>
             <p style={S.summarySubVal}>{fmt(allTime.revenue)}</p>
-          </div>
-          <div style={S.summaryDivider} />
-          <div>
-            <p style={S.summarySubLabel}>Businesses</p>
-            <p style={S.summarySubVal}>{businesses.length} active</p>
           </div>
           <div style={S.summaryDivider} />
           <div>

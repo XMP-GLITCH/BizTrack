@@ -41,8 +41,12 @@ export default defineConfig({
         name: 'BizTrack',
         short_name: 'BizTrack',
         description: 'Multi-Business Finance Tracker',
-        theme_color: '#2C1810',
-        background_color: '#2C1810',
+        // Both are the APP'S page colour, not its ink. background_color is
+        // what Android paints behind the launch splash, and index.html's own
+        // splash is #FAF8F4 -- so the old #2C1810 flashed dark brown and then
+        // cream on every cold start.
+        theme_color: '#FAF8F4',
+        background_color: '#FAF8F4',
         display: 'standalone',
         orientation: 'portrait',
         icons: [

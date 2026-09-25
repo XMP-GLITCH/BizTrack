@@ -122,8 +122,20 @@ const main = async () => {
       console.log("  shot     " + file);
     };
 
+    // `--ios` reproduces an iPhone's SAFE AREA, which is the whole of the
+    // "it doesn't feel like an app" report: a 59px strip under the Dynamic
+    // Island and a 34px strip over the home indicator. Chrome can emulate them
+    // (Emulation.setSafeAreaInsetsOverride), so this is measurable here rather
+    // than a guess about hardware nobody in this session has.
+    const ios = process.argv.includes("--ios");
     await cdp.send("Emulation.setDeviceMetricsOverride",
-      { width: 390, height: 820, deviceScaleFactor: 2, mobile: true });
+      ios ? { width: 393, height: 852, deviceScaleFactor: 2, mobile: true }
+          : { width: 390, height: 820, deviceScaleFactor: 2, mobile: true });
+    if (ios) {
+      await cdp.send("Emulation.setSafeAreaInsetsOverride",
+        { insets: { top: 59, bottom: 34, left: 0, right: 0 } });
+      console.log("  ios      safe area top 59, bottom 34");
+    }
 
     // 2. land on the origin so storage is writable, then evict the worker
     await cdp.send("Page.navigate", { url: ORIGIN + "/" });
@@ -176,6 +188,12 @@ const main = async () => {
       console.log("  NOT THE APP. body begins: " + JSON.stringify(ready?.body));
       throw new Error("never reached .bt-app -- a gate screen is probably up");
     }
+    // WAIT FOR THE FACE. DM Sans is fetched, and the fallback is wider, so a
+    // shot taken before it lands can show a row wrapping that does not wrap in
+    // the app. That is a harness artefact wearing a layout bug's clothes --
+    // and this project already needed the same await for the receipt canvas.
+    await cdp.evaluate(`document.fonts.ready.then(() => true)`);
+    await sleep(150);
     console.log(`  app      mounted, heading ${JSON.stringify(ready.heading)}`);
 
     // 5. read the card, then photograph it
@@ -198,7 +216,26 @@ const main = async () => {
     const homeOverlap = await measureOverlap(cdp);
     console.log("  home-ovl " + JSON.stringify(homeOverlap));
     await cdp.evaluate(`(() => { document.querySelector('.bt-screen').scrollTop = 0; return true; })()`);
-    await shoot("home");
+    if (ios) {
+      const chrome_ = await cdp.evaluate(`(() => {
+        const nav = document.querySelector('.bt-nav');
+        const app = document.querySelector('.bt-app');
+        const screen = document.querySelector('.bt-screen');
+        const r = nav?.getBoundingClientRect();
+        const cs = nav && getComputedStyle(nav);
+        return {
+          windowH: window.innerHeight,
+          navTop: r && Math.round(r.top), navBottom: r && Math.round(r.bottom),
+          gapBelowNav: r && Math.round(window.innerHeight - r.bottom),
+          navPadBottom: cs && cs.paddingBottom,
+          navHeight: r && Math.round(r.height),
+          appTop: app && Math.round(app.getBoundingClientRect().top),
+          screenPadTop: screen && getComputedStyle(screen).paddingTop,
+        };
+      })()`);
+      console.log("  chrome   " + JSON.stringify(chrome_));
+    }
+    await shoot(ios ? "ios-home" : "home");
     writeFileSync(`${OUT}/home.json`, JSON.stringify(card, null, 2));
 
     // 6. Analytics, because the Home change is only half a claim. If that
