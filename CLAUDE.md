@@ -251,8 +251,9 @@ Do not "fix" these without discussing:
   shop" is a length against a length rather than an arc against an arc.
   It is 16px on the page ground against a 232px card, it needs no legend
   because the rank discs below carry the same colours, and it is flexbox, so
-  this section pulls no chart library at all. `ShareRing.jsx` is still on disk
-  while the owner compares; delete it once that is settled.
+  this section pulls no chart library at all. `ShareRing.jsx` is DELETED, 23
+  September: the bar has been live since the 20th, so the comparison the file
+  was kept for is over.
 - **The bar's colours were re-measured against the PAGE, not the card.**
   `ringColor` was computed against `--card-bg` and this sits on `--bg-primary`.
   Light mode is the WEAKER ground, not the stronger: worst 5.81 against the
@@ -818,10 +819,18 @@ outside. Query 2 of `rls-check.sql` answers it from inside.
 1. ~~Claim-local-data flow.~~ **Settled 8 Sep.** Ask, never decide silently;
    default to merging, because the merge is a union and loses nothing; write a
    backup before anything changes. `src/backend/claim.js` and `ClaimScreen`.
-2. **App.jsx is now 3,108 lines**, up from ~2,600. The 8 September work made
-   this worse, not better. New screens went to their own files, but the settings
-   rows, consent gate and claim wiring all landed in App.jsx. State ownership is
-   settled, so the split is still safe; there is just more of it.
+2. **App.jsx is 6,262 lines**, and this entry itself said 3,108 until
+   25 September, which is the failure this file records about everything else
+   turned on its own open-decisions list. **The split has started**: `S`, the
+   style object read by 618 call sites, moved to `src/styles.js`, because while
+   it sat at the bottom of App.jsx no screen could leave without it. That is the
+   enabling step, not the split.
+   **The rest waits on the harness, deliberately.** Moving `AccountScreen`,
+   `Onboarding` and `PinLock` out is ~1,100 lines that CHANGE WHAT RENDERS, and
+   the only checks left are the build, 162 tests and the lint count -- the
+   sweep, the clip check and the alignment measurements are all in the missing
+   `scratchpad` scripts. Refactoring the UI layer of a live app with the visual
+   regression harness gone is the wrong order. Rebuild one sweep first.
 3. ~~Bundle is 917 KB.~~ **Done 11 Sep.** Recharts (340 KB, a third of the
    app) is lazy behind `Suspense` in `ProfitChart.jsx`, and vendor code is split
    into react / supabase / icons / store chunks. First load is now **580 KB
@@ -843,7 +852,9 @@ src/backend/   Supabase client, row mappers, auth, sync, claim.
                Degrades to local-only throughout.
 src/analytics/ Usage telemetry, crash capture, error boundary. Allowlisted.
 src/legal/     Privacy policy and terms, as data. One file, lawyer-readable.
-src/screens/   AuthScreen · LegalScreen · ClaimScreen. The rest is in App.jsx.
+src/screens/   AuthScreen · LegalScreen · ClaimScreen · ShareBar · ProfitChart.
+src/styles.js  `S`, the style object, plus PHOTO. Pure data, no state.
+               App.jsx holds the rest; see Open decisions 2.
 supabase/      migrations · functions (Edge) · emails · tests
                setup-all.sql · rls-check.sql · analytics-queries.sql
 ```
@@ -7594,3 +7605,143 @@ a sentence that no longer covers what happens -- so it needs the copy changed
 with it. Left alone on purpose, not overlooked.
 
 Live on both origins as `index-BoMOoaGC.js`.
+
+---
+
+## Session log: 23-25 September 2026: the audit, and the flagged list
+
+A full-codebase audit before pushing, then the fixable half of what it found.
+This is the first session in a month that both pushed AND deployed something
+outside the app: two Edge Functions that had been stale for a fortnight.
+
+### The audit came back clean where it counts
+
+No secret in the working tree or in 137 commits, checked against the key
+material that actually exists rather than a JWT sweep -- the mistake this file
+already records. The one `sb_secret_` in the bundle is supabase-js's own prefix
+test. `npm audit --omit=dev`: 0 vulnerabilities across 12 production
+dependencies. Every `Settings > X` route in the legal documents resolves and
+`LEGAL_VERSION` is consistent across all four files carrying it.
+
+**Two findings were killed by reading them**, which is worth as much as the two
+that survived: "Use BizTrack without an account" in `AuthScreen.jsx` and
+"whether or not you have an account" in `documents.js` are both inside COMMENTS
+documenting their own removal.
+
+### What it found, and what checking the ARTEFACT added
+
+Two dead files, deleted: `ShareRing.jsx` (87 lines, referenced only by a comment
+about itself) and `formatCurrency.js` (8 lines, zero callers, a duplicate of
+`formatMoney`, which is the one that knows a currency's minor unit).
+`ProfitChart.jsx` looked dead and is a false positive -- it is lazy-loaded
+through `import()`, so no static reference exists to find.
+
+Two stale claims in the live About copy, both the shape this file keeps
+recording. "Records are stored on your device and, IF YOU SIGN IN, backed up to
+your account" -- an account has been required since 19 September, so the
+conditional described a choice nobody has. And "Performance Analytics ...
+profit rankings" is the same claim the feature tour was fixed for on
+17 September: with one business that tab has no ranking on it at all, and both
+real users have one business.
+
+**Grepping the BUILT BUNDLE rather than the diff is what earned its keep.**
+`"if you sign in"` survived the build, from a second occurrence the source
+sweep had not surfaced -- in the privacy policy, where it reads "if you sign in
+with Google", a real conditional about one sign-in route among several.
+Flagged, read, kept. A string search that finds one instance has not finished.
+
+### THE MEASUREMENT HARNESS IS GONE, and that now governs sequencing
+
+All fifteen `scratchpad/*.mjs` scripts this file tells you to re-run were
+written in session working directories and never committed. The note under
+"Verifying changes" says which, and says to rebuild into `tools/`.
+
+**It stopped being a documentation problem the moment it blocked work**, twice
+in this session:
+
+- **The demo shop cannot be renamed.** "Bamenda Electronics" is as
+  location-specific as the "Built in Buea" line removed on the 21st, and it is
+  painted into SIX WebP screenshots and appears in 22 places in the generated
+  `BT_DEMO` map. Renaming the seed alone leaves alt text and zone names
+  describing pictures that say something else, which is the "alt text is a
+  claim too" defect this file already records. It needs `demoscreens.mjs` and
+  `marketing.mjs` back first. NOT half-done.
+- **The App.jsx split stops after the enabling step.** See Open decisions 2.
+
+### The split has started, and stopped where the checks stop
+
+`S` -- the style object, 360 lines, read by 618 call sites -- is
+`src/styles.js` now. It had to go first: while it sat at the bottom of App.jsx
+no screen could leave the file without it.
+
+It is a PROVABLE pure move rather than a careful one. `S` is pure data, every
+value a literal or a CSS `var()`, so the check is a hash: the block in
+`HEAD:src/App.jsx` and the block in `src/styles.js` are **byte-identical, 360
+lines, sha a713e8a1**. A move that can be hashed does not need a screenshot,
+which is exactly why this step was safe to take without the harness and the
+next one is not.
+
+**The lint tripwire caught the one real mistake**, going 3 errors to 4:
+`SECTION_TYPE` imported into App.jsx and never used. Its only three readers --
+`sectionLabel`, `sectionHead` and `analysisBiz` -- are all inside `S`, so it is
+module-local and deliberately NOT exported. That is the shared-const rule this
+file already states, now enforced by the module boundary rather than by memory.
+
+### Two Edge Functions were a fortnight stale, and are deployed
+
+Both were live and both predated their own fixes:
+
+```
+delete-account  v7, 11 Sep  -> v8   BEFORE the 16 Sep photo-bucket cleanup
+notify          v8, 13 Sep  -> v9   BEFORE the feedback digest AND before the
+                                    18 Sep fix making it one digest per RUN
+                                    rather than one email per ROW
+```
+
+That second one matters: deploying the 13 September `notify` beside a feedback
+table with a fortnight of rows would have sent one email per row. The version
+that went up is the digest.
+
+`verify_jwt` stays TRUE on both -- it was never passed `--no-verify-jwt`, which
+only `unsubscribe` takes. Verified from OUTSIDE rather than from the dashboard,
+which is this file's standing rule:
+
+```
+delete-account, unauthenticated   401  {"error":"not signed in"}   <- the
+                                       FUNCTION's own message, so it ran
+notify, bad secret                401
+```
+
+The body is the point. A gateway 401 and a function 401 look identical in a
+status code, and only one of them proves the deployed code executed.
+
+### The service-role key rotation is safer than it reads
+
+All four functions take it from `Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")`,
+which Supabase INJECTS automatically. It is not a secret anyone set, so
+rotating it in the dashboard propagates with **no redeploy and no config
+change**. Confirmed it never reaches the client: zero references in `src/`, and
+not in the built bundle. The cron jobs carry a different secret (`x-biztrack-
+secret`, in Vault), so they are untouched by the rotation.
+
+### Boot noise removed, one log promoted rather than deleted
+
+`console.log('SW Registered')` and `"Install prompt captured!"` fired on every
+launch and said nothing. Gone. `onRegisterError` is **kept and raised to
+`console.warn`**: no service worker means no offline and no self-update, and
+since 21 September the self-update is the only thing that moves a stuck build.
+The three rescue-path `console.log`s stay -- they are read over WhatsApp by
+someone whose books have vanished.
+
+### Still open, and none of it is code
+
+- **Rotate the Supabase service-role key.** Dashboard; see above for why it is
+  low risk.
+- **"Apex Tech" vs `ENTITY`.** The landing footer credits a studio; the legal
+  documents name a person as operator. They can legitimately differ, but if the
+  studio is the operating entity the documents name the wrong party. Settle it
+  before the lawyer reads them, not after.
+- **A lawyer**, and one message to the user who resets her app.
+- **Rebuild one harness script into `tools/`.** It is the gate on the demo
+  rename, on the rest of the App.jsx split, and on every measured figure in
+  this file.
