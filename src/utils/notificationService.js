@@ -9,7 +9,7 @@ export async function requestNotificationPermission() {
   
   try {
     return await Notification.requestPermission();
-  } catch (e) {
+  } catch {
     return 'denied';
   }
 }
@@ -17,7 +17,7 @@ export async function requestNotificationPermission() {
 export async function sendLowStockNotification(itemName, qty, businessName) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
-  const title = `⚠️ Low Stock — ${businessName}`;
+  const title = `⚠️ Low Stock: ${businessName}`;
   const body = `${itemName} is almost out. Only ${qty} left.`;
   const options = {
     body,

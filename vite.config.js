@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
-import path from 'path'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   plugins: [
@@ -12,7 +12,27 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.js',
-      registerType: 'prompt',
+      /**
+       * The app updates itself rather than asking.
+       *
+       * It was `prompt`, which means a new worker installs and then waits
+       * for an explicit "Update now". That button sat inside the main shell,
+       * past eight early returns, so a person on a gate screen could never
+       * reach it and could not leave the build they were on -- which is
+       * exactly what happened to the owner on 21 September, on the day a
+       * critical sync fix shipped.
+       *
+       * With `autoUpdate` the new worker takes over on the next launch and
+       * vite-plugin-pwa reloads the page into it. Requires `skipWaiting()`
+       * and `clients.claim()` in `src/sw.js`, because injectManifest does not
+       * add them: without those the worker still waits and this setting is
+       * inert.
+       *
+       * The trade, made knowingly: an unsubmitted form is lost when an update
+       * lands. Recorded sales are not -- every mutation reaches localStorage
+       * before this can fire.
+       */
+      registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'avatars/*.png', 'sounds/*.mp3'],
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
@@ -21,8 +41,12 @@ export default defineConfig({
         name: 'BizTrack',
         short_name: 'BizTrack',
         description: 'Multi-Business Finance Tracker',
-        theme_color: '#2C1810',
-        background_color: '#2C1810',
+        // Both are the APP'S page colour, not its ink. background_color is
+        // what Android paints behind the launch splash, and index.html's own
+        // splash is #FAF8F4 -- so the old #2C1810 flashed dark brown and then
+        // cream on every cold start.
+        theme_color: '#FAF8F4',
+        background_color: '#FAF8F4',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
@@ -33,9 +57,36 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        /**
+         * Split the big dependencies into their own chunks.
+         *
+         * This does not shrink the first load much -- the same bytes still
+         * arrive. What it changes is EVERY load after an update: app code
+         * changes on most deploys, these libraries almost never do. Keeping
+         * them separate means a new release invalidates the small app chunk
+         * and leaves ~400 KB of vendor code in the service worker cache.
+         *
+         * For a user paying by the megabyte who gets an update every few days,
+         * that is the difference between re-downloading the whole app and
+         * re-downloading the part that actually changed.
+         */
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("@supabase")) return "supabase";
+          // Vite normalises ids to forward slashes, so a plain check is enough.
+          if (id.includes("react-dom") || id.includes("node_modules/react/")) return "react";
+          if (id.includes("lucide-react")) return "icons";
+          if (id.includes("zustand")) return "store";
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
 })
