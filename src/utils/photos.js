@@ -20,7 +20,6 @@
  */
 
 const DB_NAME = "biztrack-photos";
-const DB_VERSION = 1;
 const STORE = "photos";
 
 /** Long edge, in CSS pixels. A product photo is read at thumbnail size and
@@ -63,7 +62,24 @@ function openDb() {
   if (dbPromise) return dbPromise;
   dbPromise = (async () => {
     if (typeof indexedDB === "undefined") throw new Error("This browser cannot store photos.");
-    let db = await openOnce(DB_VERSION);
+    // OPEN WITHOUT NAMING A VERSION, and that is the whole of a bug that made
+    // photos permanently unsavable. This used to ask for a hardcoded 1 -- while
+    // the self-heal below reopens at `db.version + 1`. So the moment that path
+    // fired even once, the database sat at 2 and every later load asked for 1,
+    // which `indexedDB.open` rejects outright:
+    //
+    //     VersionError: The requested version (1) is less than the existing
+    //     version (2)
+    //
+    // The recovery was a ONE-WAY TRAP: it fixed a missing store and left the
+    // user unable to save a photo ever again, on the feature both real users
+    // asked for first, with no route back short of clearing site data.
+    //
+    // Versionless opens whatever exists, and still creates the store on a
+    // database that is not there yet -- `onupgradeneeded` fires with
+    // oldVersion 0. So this is correct for a fresh device, for one already
+    // bumped, and for one bumped again later.
+    let db = await openOnce();
 
     // The database can exist AT THIS VERSION and still have no object store.
     // An upgrade transaction that aborted part way leaves exactly that, and so
@@ -347,7 +363,13 @@ export async function savePhoto(file, id) {
      * store would just fail twice and take twice as long to say so.
      */
     if (!quotaError(err)) {
-      throw new Error(`The photo could not be saved: ${err?.name || "unknown error"}. Nothing was changed.`, { cause: err });
+      // The MESSAGE, not the name. This printed `err.name`, which for anything
+      // this file throws itself is the bare word "Error" -- so a person saw
+      // "could not be saved: Error" while the real sentence, "Photo storage is
+      // busy.", sat unread in the console. The name stays in brackets because
+      // it is still what support needs to tell two failures apart.
+      const why = err?.message && err.message !== err?.name ? err.message : "an unknown fault";
+      throw new Error(`The photo could not be saved: ${why}${err?.name ? ` (${err.name})` : ""}. Nothing was changed.`, { cause: err });
     }
 
     try {

@@ -60,8 +60,27 @@ export async function attach(base) {
 
   let id = 0;
   const pending = new Map();
+  // EVENTS WERE BEING DROPPED. Only replies carry an `id`, so a handler that
+  // looks at nothing else throws away console output and every other
+  // notification -- which is how a probe ends up reporting "it failed" with no
+  // way to say why, when the page had already logged the cause.
+  const logs = [];
   ws.onmessage = (m) => {
     const msg = JSON.parse(m.data);
+    if (msg.method === "Runtime.consoleAPICalled") {
+      const text = (msg.params.args || [])
+        .map((a) => (a.value !== undefined ? String(a.value)
+                   : a.description !== undefined ? a.description
+                   : a.preview ? JSON.stringify(a.preview.properties) : a.type))
+        .join(" ");
+      logs.push(msg.params.type + ": " + text);
+      return;
+    }
+    if (msg.method === "Runtime.exceptionThrown") {
+      const d = msg.params.exceptionDetails;
+      logs.push("uncaught: " + (d.exception?.description || d.text));
+      return;
+    }
     if (msg.id && pending.has(msg.id)) {
       const { ok, no } = pending.get(msg.id);
       pending.delete(msg.id);
@@ -86,7 +105,8 @@ export async function attach(base) {
     return r.result.value;
   };
 
-  return { send, evaluate, close: () => ws.close() };
+  // `logs` is live: read it after a step to see what the PAGE said.
+  return { send, evaluate, logs, close: () => ws.close() };
 }
 
 export { sleep };

@@ -782,6 +782,20 @@ Do not "fix" these without discussing:
   sheet. It also owns Escape and focus restore for every sheet in the app; a
   second shell would quietly drop both.
 
+- **THE PHOTO DATABASE IS OPENED WITHOUT A VERSION, and pinning one again
+  makes photos permanently unsavable.** `openDb` asked for a hardcoded 1 while
+  its own self-heal -- the store-missing path -- reopens at `db.version + 1`.
+  So once that path fired, the database sat at 2 and every later load threw
+  `VersionError: The requested version (1) is less than the existing version
+  (2)`. Reported 26 September as "remove a picture, add a new one, and it just
+  deletes"; reproduced by forcing the database to v2 and driving add, remove,
+  add in `tools/harness/photoswap.mjs`, which fails on the old code and passes
+  on the new. A recovery path that leaves the user worse off than the fault it
+  recovered from is a ONE-WAY TRAP, and this one sat under the feature both
+  real users asked for first. A versionless open still creates the store on a
+  fresh device, because `onupgradeneeded` fires with oldVersion 0.
+  The error it raised also printed `err.name`, which for anything this file
+  throws is the bare word "Error". It prints the message now, name in brackets.
 - **A receipt is DERIVED from the sale, never stored.** `makeSale` already
   snapshots `itemName`, `qty`, `unitPrice` and `occurredAt` at the moment of
   recording, so the money on a receipt cannot drift and a second copy would be
